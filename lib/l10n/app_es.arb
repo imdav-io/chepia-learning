@@ -1,0 +1,76 @@
+{
+  "@@locale": "es",
+  "appName": "Chepia Learning",
+
+  "actionContinue": "Continuar",
+  "actionStart": "Comenzar",
+  "actionRetry": "Reintentar",
+  "actionCancel": "Cancelar",
+  "actionSave": "Guardar",
+  "actionNext": "Siguiente",
+  "actionFinish": "Finalizar",
+  "actionDownload": "Descargar",
+  "actionOpen": "Abrir",
+  "actionClose": "Cerrar",
+
+  "tabLearn": "Aprender",
+  "tabProgress": "Progreso",
+  "tabProfile": "Perfil",
+
+  "onboardingTitle1": "Aprende inglés a tu ritmo",
+  "onboardingBody1": "Lee y escucha tus libros donde quieras, con audio sincronizado.",
+  "onboardingTitle2": "Practica con quizzes",
+  "onboardingBody2": "Al final de cada lección hay un quiz para reforzar lo aprendido.",
+  "onboardingTitle3": "Tu progreso, en tu bolsillo",
+  "onboardingBody3": "Continúa donde te quedaste, en cualquier dispositivo.",
+
+  "authSignInTitle": "Inicia sesión",
+  "authSignUpTitle": "Crea tu cuenta",
+  "authEmail": "Correo electrónico",
+  "authPassword": "Contraseña",
+  "authForgot": "¿Olvidaste tu contraseña?",
+  "authSignIn": "Iniciar sesión",
+  "authSignUp": "Registrarme",
+  "authContinueWithGoogle": "Continuar con Google",
+  "authContinueWithApple": "Continuar con Apple",
+  "authNoAccount": "¿No tienes cuenta? Regístrate",
+  "authHasAccount": "¿Ya tienes cuenta? Inicia sesión",
+
+  "catalogTitle": "Niveles",
+  "levelBeginner": "Básico",
+  "levelIntermediate": "Intermedio",
+  "levelAdvanced": "Avanzado",
+  "lessonsTitle": "Lecciones",
+  "lessonNumber": "Lección {number}",
+  "@lessonNumber": {
+    "placeholders": { "number": { "type": "int" } }
+  },
+
+  "lessonReadTab": "Leer",
+  "lessonListenTab": "Escuchar",
+  "lessonStartQuiz": "Hacer quiz",
+
+  "quizScore": "Puntaje",
+  "quizCorrect": "¡Correcto!",
+  "quizIncorrect": "Incorrecto",
+  "quizExplanation": "Explicación",
+  "quizPassed": "¡Aprobaste!",
+  "quizFailed": "Inténtalo de nuevo",
+
+  "progressTitle": "Tu progreso",
+  "progressLessonsCompleted": "Lecciones completadas",
+  "progressCurrentStreak": "Racha actual",
+  "progressDays": "{count, plural, =1{1 día} other{{count} días}}",
+  "@progressDays": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+
+  "profileTitle": "Perfil",
+  "profileLanguage": "Idioma",
+  "profileTheme": "Tema",
+  "profileSignOut": "Cerrar sesión",
+
+  "errorGeneric": "Algo salió mal. Inténtalo de nuevo.",
+  "errorNetwork": "Sin conexión a internet",
+  "errorAuth": "Error de autenticación"
+}

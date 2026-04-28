@@ -1,0 +1,92 @@
+name: chepia_learning
+description: "Chepia Learning - English learning with PDFs, audios and AI quizzes"
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.11.4
+  flutter: ">=3.41.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Routing
+  go_router: ^14.6.2
+
+  # Backend (Supabase)
+  supabase_flutter: ^2.8.4
+
+  # PDF
+  pdfx: ^2.9.0
+
+  # Audio
+  just_audio: ^0.9.42
+  just_audio_background: ^0.0.1-beta.13
+  audio_session: ^0.1.21
+
+  # Local persistence
+  hive_flutter: ^1.1.0
+  shared_preferences: ^2.3.3
+
+  # Networking and files
+  dio: ^5.7.0
+  path_provider: ^2.1.5
+  path: ^1.9.0
+
+  # Utilities
+  intl: ^0.20.1
+  freezed_annotation: ^2.4.4
+  json_annotation: ^4.9.0
+  uuid: ^4.5.1
+  crypto: ^3.0.6
+  equatable: ^2.0.7
+  google_fonts: ^6.2.1
+  flutter_dotenv: ^5.2.1
+  url_launcher: ^6.3.1
+  package_info_plus: ^8.1.1
+  connectivity_plus: ^6.1.0
+
+  # Auth helpers
+  google_sign_in: ^6.2.2
+  sign_in_with_apple: ^6.1.4
+
+  # UI
+  flutter_svg: ^2.0.16
+  cached_network_image: ^3.4.1
+  shimmer: ^3.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+  very_good_analysis: ^6.0.0
+  mocktail: ^1.0.4
+
+  # Code generation
+  build_runner: ^2.4.13
+  freezed: ^2.5.7
+  json_serializable: ^6.9.0
+  riverpod_generator: ^2.6.3
+  custom_lint: ^0.7.0
+  riverpod_lint: ^2.6.3
+
+flutter:
+  uses-material-design: true
+  generate: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
+    - .env

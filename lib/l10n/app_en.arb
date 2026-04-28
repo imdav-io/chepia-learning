@@ -1,0 +1,76 @@
+{
+  "@@locale": "en",
+  "appName": "Chepia Learning",
+
+  "actionContinue": "Continue",
+  "actionStart": "Start",
+  "actionRetry": "Retry",
+  "actionCancel": "Cancel",
+  "actionSave": "Save",
+  "actionNext": "Next",
+  "actionFinish": "Finish",
+  "actionDownload": "Download",
+  "actionOpen": "Open",
+  "actionClose": "Close",
+
+  "tabLearn": "Learn",
+  "tabProgress": "Progress",
+  "tabProfile": "Profile",
+
+  "onboardingTitle1": "Learn English at your pace",
+  "onboardingBody1": "Read and listen to your books anywhere, with synced audio.",
+  "onboardingTitle2": "Practice with quizzes",
+  "onboardingBody2": "At the end of each lesson, a quiz reinforces what you learned.",
+  "onboardingTitle3": "Your progress, in your pocket",
+  "onboardingBody3": "Pick up where you left off, on any device.",
+
+  "authSignInTitle": "Sign in",
+  "authSignUpTitle": "Create your account",
+  "authEmail": "Email",
+  "authPassword": "Password",
+  "authForgot": "Forgot your password?",
+  "authSignIn": "Sign in",
+  "authSignUp": "Sign up",
+  "authContinueWithGoogle": "Continue with Google",
+  "authContinueWithApple": "Continue with Apple",
+  "authNoAccount": "Don't have an account? Sign up",
+  "authHasAccount": "Already have an account? Sign in",
+
+  "catalogTitle": "Levels",
+  "levelBeginner": "Beginner",
+  "levelIntermediate": "Intermediate",
+  "levelAdvanced": "Advanced",
+  "lessonsTitle": "Lessons",
+  "lessonNumber": "Lesson {number}",
+  "@lessonNumber": {
+    "placeholders": { "number": { "type": "int" } }
+  },
+
+  "lessonReadTab": "Read",
+  "lessonListenTab": "Listen",
+  "lessonStartQuiz": "Take quiz",
+
+  "quizScore": "Score",
+  "quizCorrect": "Correct!",
+  "quizIncorrect": "Incorrect",
+  "quizExplanation": "Explanation",
+  "quizPassed": "You passed!",
+  "quizFailed": "Try again",
+
+  "progressTitle": "Your progress",
+  "progressLessonsCompleted": "Lessons completed",
+  "progressCurrentStreak": "Current streak",
+  "progressDays": "{count, plural, =1{1 day} other{{count} days}}",
+  "@progressDays": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+
+  "profileTitle": "Profile",
+  "profileLanguage": "Language",
+  "profileTheme": "Theme",
+  "profileSignOut": "Sign out",
+
+  "errorGeneric": "Something went wrong. Please try again.",
+  "errorNetwork": "No internet connection",
+  "errorAuth": "Authentication error"
+}
