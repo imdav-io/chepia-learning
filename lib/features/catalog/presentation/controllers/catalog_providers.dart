@@ -159,6 +159,8 @@ class BookReaderData {
     required this.bookSlug,
     required this.pdfUrl,
     required this.pdfKey,
+    required this.pageManifestUrl,
+    required this.pageManifestKey,
     required this.studyGuideUrl,
     required this.studyGuideKey,
     required this.lessons,
@@ -169,6 +171,8 @@ class BookReaderData {
   final String bookSlug;
   final String? pdfUrl;
   final String? pdfKey;
+  final String? pageManifestUrl;
+  final String? pageManifestKey;
   final String? studyGuideUrl;
   final String? studyGuideKey;
   final List<LessonWithAudio> lessons;
@@ -200,6 +204,21 @@ final bookReaderDataProvider = FutureProvider.family<BookReaderData, String>((
     'Study guide',
   );
   final pdfUrl = pdf == null ? null : await assetRepo.resolveUrl(pdf);
+  String? pageManifestKey;
+  String? pageManifestUrl;
+  if (book['slug'] == 'as-it-is-book-1') {
+    pageManifestKey = 'books/${book['slug']}/pages/v1/manifest.json';
+    pageManifestUrl = await _tryResolveUrl(
+      assetRepo,
+      Asset(
+        id: 'page-manifest-${book['slug']}',
+        kind: AssetKind.pdf,
+        storagePath: pageManifestKey,
+        bookId: bookId,
+      ),
+      'Manifest de páginas',
+    );
+  }
   final studyGuideUrl = await _tryResolveUrl(
     assetRepo,
     studyGuide,
@@ -227,6 +246,8 @@ final bookReaderDataProvider = FutureProvider.family<BookReaderData, String>((
     bookSlug: book['slug'] as String,
     pdfUrl: pdfUrl,
     pdfKey: pdf?.storagePath,
+    pageManifestUrl: pageManifestUrl,
+    pageManifestKey: pageManifestKey,
     studyGuideUrl: studyGuideUrl,
     studyGuideKey: studyGuide?.storagePath,
     lessons: lessonsWithAudio,

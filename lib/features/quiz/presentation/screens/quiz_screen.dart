@@ -68,6 +68,12 @@ class _QuizRunnerState extends ConsumerState<_QuizRunner> {
   String? _attemptError;
   String? _finishError;
   QuizAttemptResult? _result;
+  bool _reviewMode = false;
+  List<QuizQuestion> _reviewQuestions = const [];
+  final _missedQuestions = <QuizQuestion>[];
+
+  List<QuizQuestion> get _questions =>
+      _reviewMode ? _reviewQuestions : widget.quiz.questions;
 
   @override
   void initState() {
@@ -83,6 +89,9 @@ class _QuizRunnerState extends ConsumerState<_QuizRunner> {
       _selectedOptionId = null;
       _showFeedback = false;
       _result = null;
+      _reviewMode = false;
+      _reviewQuestions = const [];
+      _missedQuestions.clear();
       _isBusy = false;
       _attemptError = null;
       _finishError = null;
@@ -108,14 +117,18 @@ class _QuizRunnerState extends ConsumerState<_QuizRunner> {
 
   Future<void> _submit() async {
     if (_selectedOptionId == null || _showFeedback || _isBusy) return;
-    final question = widget.quiz.questions[_index];
+    final question = _questions[_index];
     final option = question.options.firstWhere(
       (o) => o.id == _selectedOptionId,
     );
     setState(() {
       _isBusy = true;
       _showFeedback = true;
-      if (option.isCorrect) _correctCount++;
+      if (option.isCorrect) {
+        _correctCount++;
+      } else if (!_missedQuestions.any((q) => q.id == question.id)) {
+        _missedQuestions.add(question);
+      }
     });
 
     final attemptId = _attemptId;
@@ -135,7 +148,8 @@ class _QuizRunnerState extends ConsumerState<_QuizRunner> {
 
   Future<void> _next() async {
     if (_isBusy) return;
-    if (_index < widget.quiz.questions.length - 1) {
+    final questions = _questions;
+    if (_index < questions.length - 1) {
       setState(() {
         _index++;
         _selectedOptionId = null;
@@ -143,6 +157,18 @@ class _QuizRunnerState extends ConsumerState<_QuizRunner> {
         _finishError = null;
       });
     } else {
+      if (_reviewMode) {
+        setState(() {
+          _result = QuizAttemptResult(
+            attemptId: 'review',
+            score: _correctCount,
+            total: questions.length,
+            passed: _correctCount == questions.length,
+          );
+        });
+        return;
+      }
+
       // Finalizar
       final attemptId = _attemptId;
       if (attemptId == null) {
@@ -161,7 +187,7 @@ class _QuizRunnerState extends ConsumerState<_QuizRunner> {
             .finishAttempt(
               attemptId: attemptId,
               score: _correctCount,
-              total: widget.quiz.questions.length,
+              total: questions.length,
               passingScore: widget.quiz.passingScore,
             );
         if (!mounted) return;
@@ -179,11 +205,38 @@ class _QuizRunnerState extends ConsumerState<_QuizRunner> {
     }
   }
 
+  void _reviewMissedQuestions() {
+    if (_missedQuestions.isEmpty) return;
+    setState(() {
+      _reviewMode = true;
+      _reviewQuestions = List.unmodifiable(_missedQuestions);
+      _missedQuestions.clear();
+      _attemptId = null;
+      _index = 0;
+      _correctCount = 0;
+      _selectedOptionId = null;
+      _showFeedback = false;
+      _result = null;
+      _isBusy = false;
+      _attemptError = null;
+      _finishError = null;
+      _isStartingAttempt = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final result = _result;
     if (result != null) {
-      return _ResultView(result: result);
+      return _ResultView(
+        result: result,
+        missedQuestions: List.unmodifiable(_missedQuestions),
+        isReviewMode: _reviewMode,
+        onRetry: _startAttempt,
+        onReviewMissed: _missedQuestions.isEmpty
+            ? null
+            : _reviewMissedQuestions,
+      );
     }
     if (_attemptError != null) {
       return _AttemptErrorView(message: _attemptError!, onRetry: _startAttempt);
@@ -192,8 +245,8 @@ class _QuizRunnerState extends ConsumerState<_QuizRunner> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final question = widget.quiz.questions[_index];
-    final total = widget.quiz.questions.length;
+    final question = _questions[_index];
+    final total = _questions.length;
     final selected = _selectedOptionId;
     final selectedOption = selected == null
         ? null
@@ -216,7 +269,9 @@ class _QuizRunnerState extends ConsumerState<_QuizRunner> {
                 ),
                 const Spacer(),
                 Chip(
-                  label: Text(_kindLabel(question.kind)),
+                  label: Text(
+                    _reviewMode ? 'Repaso' : _kindLabel(question.kind),
+                  ),
                   visualDensity: VisualDensity.compact,
                 ),
               ],
@@ -423,19 +478,30 @@ class _AttemptErrorView extends StatelessWidget {
 }
 
 class _ResultView extends StatelessWidget {
-  const _ResultView({required this.result});
+  const _ResultView({
+    required this.result,
+    required this.missedQuestions,
+    required this.isReviewMode,
+    required this.onRetry,
+    this.onReviewMissed,
+  });
+
   final QuizAttemptResult result;
+  final List<QuizQuestion> missedQuestions;
+  final bool isReviewMode;
+  final VoidCallback onRetry;
+  final VoidCallback? onReviewMissed;
 
   @override
   Widget build(BuildContext context) {
     final color = result.passed
         ? Colors.green
         : Theme.of(context).colorScheme.error;
-    return Center(
-      child: Padding(
+    return SafeArea(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Icon(
               result.passed ? Icons.emoji_events : Icons.replay,
@@ -444,7 +510,9 @@ class _ResultView extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              result.passed ? '¡Aprobaste!' : 'Inténtalo de nuevo',
+              isReviewMode
+                  ? (result.passed ? 'Repaso completo' : 'Sigue repasando')
+                  : (result.passed ? '¡Aprobaste!' : 'Inténtalo de nuevo'),
               style: Theme.of(
                 context,
               ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
@@ -454,11 +522,89 @@ class _ResultView extends StatelessWidget {
               '${result.score} / ${result.total} (${result.percentage.toStringAsFixed(0)}%)',
               style: Theme.of(context).textTheme.titleLarge,
             ),
-            const SizedBox(height: 32),
-            FilledButton(
-              onPressed: () => context.pop(),
-              child: const Text('Volver al libro'),
+            if (missedQuestions.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              _MissedQuestionsPanel(questions: missedQuestions),
+            ],
+            const SizedBox(height: 24),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                if (onReviewMissed != null)
+                  FilledButton.icon(
+                    onPressed: onReviewMissed,
+                    icon: const Icon(Icons.psychology_alt_outlined),
+                    label: const Text('Repasar falladas'),
+                  ),
+                OutlinedButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reintentar completo'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: () => context.pop(),
+                  icon: const Icon(Icons.menu_book_outlined),
+                  label: const Text('Volver al libro'),
+                ),
+              ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MissedQuestionsPanel extends StatelessWidget {
+  const _MissedQuestionsPanel({required this.questions});
+
+  final List<QuizQuestion> questions;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 720),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Errores para repasar',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 12),
+            for (final question in questions) ...[
+              Text(
+                question.prompt,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              if (question.correctOption != null) ...[
+                const SizedBox(height: 4),
+                Text('Respuesta: ${question.correctOption!.text}'),
+              ],
+              if (question.explanation != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  question.explanation!,
+                  style: TextStyle(color: colors.onSurfaceVariant),
+                ),
+              ],
+              if (question != questions.last)
+                Divider(height: 22, color: colors.outlineVariant),
+            ],
           ],
         ),
       ),

@@ -13,6 +13,7 @@ import '../features/onboarding/presentation/screens/splash_screen.dart';
 import '../features/profile/presentation/screens/profile_screen.dart';
 import '../features/progress/presentation/screens/progress_screen.dart';
 import '../features/quiz/presentation/screens/quiz_screen.dart';
+import '../features/vocabulary/presentation/screens/flashcards_screen.dart';
 import 'main_shell.dart';
 
 final _rootNavKey = GlobalKey<NavigatorState>();
@@ -133,6 +134,14 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/quiz/:bookSlug/:lessonNumber',
         parentNavigatorKey: _rootNavKey,
         builder: (_, s) => QuizScreen(
+          bookSlug: s.pathParameters['bookSlug']!,
+          lessonNumber: int.parse(s.pathParameters['lessonNumber']!),
+        ),
+      ),
+      GoRoute(
+        path: '/flashcards/:bookSlug/:lessonNumber',
+        parentNavigatorKey: _rootNavKey,
+        builder: (_, s) => FlashcardsScreen(
           bookSlug: s.pathParameters['bookSlug']!,
           lessonNumber: int.parse(s.pathParameters['lessonNumber']!),
         ),

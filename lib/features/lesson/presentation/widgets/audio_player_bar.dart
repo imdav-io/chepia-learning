@@ -30,14 +30,19 @@ class _AudioPlayerBarState extends State<AudioPlayerBar> {
   late final AudioPlayer _player;
   Timer? _persistTimer;
   StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<Duration>? _positionSub;
   Object? _error;
   String? _restoredUrl;
+  Duration? _loopStart;
+  Duration? _loopEnd;
+  bool _segmentSeeking = false;
 
   @override
   void initState() {
     super.initState();
     _player = AudioPlayer();
     _loadUrl();
+    _positionSub = _player.positionStream.listen(_handlePositionTick);
     _playerStateSub = _player.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed &&
           widget.onPositionPersist != null) {
@@ -62,6 +67,7 @@ class _AudioPlayerBarState extends State<AudioPlayerBar> {
   void didUpdateWidget(covariant AudioPlayerBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.audioUrl != widget.audioUrl) {
+      _clearSegmentLoop(notify: false);
       _loadUrl();
       return;
     }
@@ -107,10 +113,69 @@ class _AudioPlayerBarState extends State<AudioPlayerBar> {
     }
   }
 
+  Future<void> _toggleRepeat(LoopMode mode) async {
+    await _player.setLoopMode(
+      mode == LoopMode.one ? LoopMode.off : LoopMode.one,
+    );
+  }
+
+  void _handlePositionTick(Duration position) {
+    final start = _loopStart;
+    final end = _loopEnd;
+    if (start == null || end == null || end <= start) return;
+    if (_segmentSeeking || position < end) return;
+    _segmentSeeking = true;
+    unawaited(
+      _player.seek(start).whenComplete(() {
+        _segmentSeeking = false;
+      }),
+    );
+  }
+
+  Future<void> _repeatLastFiveSeconds() async {
+    final target = _player.position - const Duration(seconds: 5);
+    await _player.seek(target.isNegative ? Duration.zero : target);
+  }
+
+  void _markSegmentStart() {
+    final position = _player.position;
+    setState(() {
+      _loopStart = position;
+      if (_loopEnd != null && _loopEnd! <= position) {
+        _loopEnd = null;
+      }
+    });
+  }
+
+  void _markSegmentEnd() {
+    final position = _player.position;
+    setState(() {
+      if (_loopStart == null || position > _loopStart!) {
+        _loopEnd = position;
+      } else {
+        _loopStart = position;
+        _loopEnd = null;
+      }
+    });
+  }
+
+  void _clearSegmentLoop({bool notify = true}) {
+    if (!notify) {
+      _loopStart = null;
+      _loopEnd = null;
+      return;
+    }
+    setState(() {
+      _loopStart = null;
+      _loopEnd = null;
+    });
+  }
+
   @override
   void dispose() {
     _persistTimer?.cancel();
     _playerStateSub?.cancel();
+    _positionSub?.cancel();
     if (widget.onPositionPersist != null && _player.position.inSeconds > 0) {
       widget.onPositionPersist!(
         _player.position.inSeconds,
@@ -126,6 +191,18 @@ class _AudioPlayerBarState extends State<AudioPlayerBar> {
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     final h = d.inHours;
     return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+
+  String _practiceTooltip() {
+    final start = _loopStart;
+    final end = _loopEnd;
+    if (start != null && end != null) {
+      return 'Loop A-B activo: ${_fmt(start)} a ${_fmt(end)}';
+    }
+    if (start != null) {
+      return 'Inicio A marcado en ${_fmt(start)}. Marca B para repetir el segmento.';
+    }
+    return 'Herramientas de escucha: repetir 5s y loop A-B';
   }
 
   @override
@@ -202,6 +279,98 @@ class _AudioPlayerBarState extends State<AudioPlayerBar> {
                         _player.position + const Duration(seconds: 10),
                       ),
                     ),
+                    StreamBuilder<LoopMode>(
+                      stream: _player.loopModeStream,
+                      builder: (_, snap) {
+                        final loopMode = snap.data ?? LoopMode.off;
+                        final repeatEnabled = loopMode == LoopMode.one;
+                        return IconButton(
+                          icon: Icon(
+                            repeatEnabled ? Icons.repeat_on : Icons.repeat,
+                          ),
+                          tooltip: repeatEnabled
+                              ? 'No repetir audio'
+                              : 'Repetir audio',
+                          color: repeatEnabled ? colors.primary : null,
+                          isSelected: repeatEnabled,
+                          selectedIcon: const Icon(Icons.repeat_on),
+                          onPressed: () => _toggleRepeat(loopMode),
+                        );
+                      },
+                    ),
+                    PopupMenuButton<String>(
+                      tooltip: _practiceTooltip(),
+                      onSelected: (value) {
+                        switch (value) {
+                          case 'repeat5':
+                            _repeatLastFiveSeconds();
+                            break;
+                          case 'markA':
+                            _markSegmentStart();
+                            break;
+                          case 'markB':
+                            _markSegmentEnd();
+                            break;
+                          case 'clear':
+                            _clearSegmentLoop();
+                            break;
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(
+                          value: 'repeat5',
+                          child: ListTile(
+                            leading: Icon(Icons.replay_5),
+                            title: Text('Repetir últimos 5s'),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'markA',
+                          child: ListTile(
+                            leading: const Icon(Icons.looks_one_outlined),
+                            title: const Text('Marcar inicio A'),
+                            subtitle: _loopStart == null
+                                ? null
+                                : Text(_fmt(_loopStart!)),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'markB',
+                          child: ListTile(
+                            leading: const Icon(Icons.looks_two_outlined),
+                            title: const Text('Marcar fin B'),
+                            subtitle: _loopEnd == null
+                                ? null
+                                : Text(_fmt(_loopEnd!)),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'clear',
+                          enabled: _loopStart != null || _loopEnd != null,
+                          child: const ListTile(
+                            leading: Icon(Icons.close),
+                            title: Text('Limpiar A-B'),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ],
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Icon(
+                          Icons.hearing_outlined,
+                          color: _loopStart != null && _loopEnd != null
+                              ? colors.primary
+                              : null,
+                        ),
+                      ),
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(
@@ -241,25 +410,14 @@ class _AudioPlayerBarState extends State<AudioPlayerBar> {
                                     return Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        SliderTheme(
-                                          data: SliderTheme.of(context).copyWith(
-                                            trackHeight: 3,
-                                            thumbShape:
-                                                const RoundSliderThumbShape(
-                                                  enabledThumbRadius: 6,
-                                                ),
-                                            overlayShape:
-                                                const RoundSliderOverlayShape(
-                                                  overlayRadius: 12,
-                                                ),
-                                          ),
-                                          child: Slider(
-                                            value: clamped.inMilliseconds
-                                                .toDouble(),
-                                            max: maxMs,
-                                            onChanged: (v) => _player.seek(
-                                              Duration(milliseconds: v.toInt()),
-                                            ),
+                                        _AudioPositionSlider(
+                                          position: clamped,
+                                          duration: duration,
+                                          loopStart: _loopStart,
+                                          loopEnd: _loopEnd,
+                                          maxMilliseconds: maxMs,
+                                          onChanged: (v) => _player.seek(
+                                            Duration(milliseconds: v.toInt()),
                                           ),
                                         ),
                                         Padding(
@@ -328,5 +486,167 @@ class _AudioPlayerBarState extends State<AudioPlayerBar> {
         ),
       ),
     );
+  }
+}
+
+class _AudioPositionSlider extends StatelessWidget {
+  const _AudioPositionSlider({
+    required this.position,
+    required this.duration,
+    required this.loopStart,
+    required this.loopEnd,
+    required this.maxMilliseconds,
+    required this.onChanged,
+  });
+
+  final Duration position;
+  final Duration duration;
+  final Duration? loopStart;
+  final Duration? loopEnd;
+  final double maxMilliseconds;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 42,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned.fill(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 3,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+              ),
+              child: Slider(
+                value: position.inMilliseconds.toDouble(),
+                max: maxMilliseconds,
+                onChanged: onChanged,
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _SegmentLoopPainter(
+                  startRatio: _ratioFor(loopStart),
+                  endRatio: _ratioFor(loopEnd),
+                  color: colors.primary,
+                  labelColor: colors.onPrimary,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  double? _ratioFor(Duration? marker) {
+    if (marker == null || duration.inMilliseconds <= 0) return null;
+    final value = marker.inMilliseconds.clamp(0, duration.inMilliseconds);
+    return value / duration.inMilliseconds;
+  }
+}
+
+class _SegmentLoopPainter extends CustomPainter {
+  const _SegmentLoopPainter({
+    required this.startRatio,
+    required this.endRatio,
+    required this.color,
+    required this.labelColor,
+  });
+
+  final double? startRatio;
+  final double? endRatio;
+  final Color color;
+  final Color labelColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final start = startRatio;
+    final end = endRatio;
+    if (size.width <= 0 || (start == null && end == null)) return;
+
+    const horizontalInset = 24.0;
+    final usableWidth = (size.width - horizontalInset * 2).clamp(
+      0.0,
+      double.infinity,
+    );
+    final y = size.height / 2;
+
+    double xFor(double ratio) => horizontalInset + usableWidth * ratio;
+
+    if (start != null && end != null && end > start) {
+      final left = xFor(start);
+      final right = xFor(end);
+      final rangePaint = Paint()..color = color.withValues(alpha: 0.16);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(left, y - 9, right - left, 18),
+          const Radius.circular(99),
+        ),
+        rangePaint,
+      );
+    }
+
+    if (start != null) {
+      _drawMarker(canvas, Offset(xFor(start), y), 'A');
+    }
+    if (end != null) {
+      _drawMarker(canvas, Offset(xFor(end), y), 'B');
+    }
+  }
+
+  void _drawMarker(Canvas canvas, Offset center, String label) {
+    final markerPaint = Paint()
+      ..color = color
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      Offset(center.dx, center.dy - 12),
+      Offset(center.dx, center.dy + 12),
+      markerPaint,
+    );
+    canvas.drawCircle(center, 4, Paint()..color = color);
+
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: TextStyle(
+          color: labelColor,
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final labelRect = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: Offset(center.dx, center.dy - 17),
+        width: 16,
+        height: 14,
+      ),
+      const Radius.circular(4),
+    );
+    canvas.drawRRect(labelRect, Paint()..color = color);
+    textPainter.paint(
+      canvas,
+      Offset(
+        labelRect.outerRect.center.dx - textPainter.width / 2,
+        labelRect.outerRect.center.dy - textPainter.height / 2,
+      ),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _SegmentLoopPainter oldDelegate) {
+    return startRatio != oldDelegate.startRatio ||
+        endRatio != oldDelegate.endRatio ||
+        color != oldDelegate.color ||
+        labelColor != oldDelegate.labelColor;
   }
 }

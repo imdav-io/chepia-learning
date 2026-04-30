@@ -42,43 +42,76 @@ final bookProgressProvider = FutureProvider.family<BookProgressSummary, String>(
 class BookProgressOverview {
   const BookProgressOverview({
     required this.bookId,
+    required this.bookSlug,
     required this.bookTitle,
     required this.levelName,
     required this.totalLessons,
+    required this.totalAudioLessons,
     required this.readCompleted,
     required this.audioCompleted,
     required this.quizTotal,
     required this.quizPassed,
+    required this.quizAttempts,
+    required this.quizScore,
+    required this.quizAnswered,
     required this.pagesRead,
+    required this.pagesToday,
     required this.minutesListened,
+    required this.minutesThisWeek,
     required this.lastLessonNumber,
     required this.lastLessonTitle,
     required this.lastActivityAt,
+    required this.nextLessonNumber,
+    required this.nextLessonTitle,
+    required this.nextStepLabel,
+    required this.studyDayKeys,
   });
 
   final String bookId;
+  final String bookSlug;
   final String bookTitle;
   final String levelName;
   final int totalLessons;
+  final int totalAudioLessons;
   final int readCompleted;
   final int audioCompleted;
   final int quizTotal;
   final int quizPassed;
+  final int quizAttempts;
+  final int quizScore;
+  final int quizAnswered;
   final int pagesRead;
+  final int pagesToday;
   final int minutesListened;
+  final int minutesThisWeek;
   final int? lastLessonNumber;
   final String? lastLessonTitle;
   final DateTime? lastActivityAt;
+  final int? nextLessonNumber;
+  final String? nextLessonTitle;
+  final String? nextStepLabel;
+  final List<String> studyDayKeys;
 
   int get completedUnits => readCompleted + audioCompleted + quizPassed;
 
-  int get totalUnits => (totalLessons * 2) + quizTotal;
+  int get totalUnits => totalLessons + totalAudioLessons + quizTotal;
 
   double get completionRatio =>
       totalUnits == 0 ? 0 : completedUnits / totalUnits;
 
   int get completionPercent =>
       (completionRatio * 100).round().clamp(0, 100).toInt();
+
+  int get quizAccuracyPercent => quizAnswered == 0
+      ? 0
+      : ((quizScore / quizAnswered) * 100).round().clamp(0, 100).toInt();
+
+  int get listeningPercent => totalAudioLessons == 0
+      ? 0
+      : ((audioCompleted / totalAudioLessons) * 100)
+            .round()
+            .clamp(0, 100)
+            .toInt();
 }
 
 final progressOverviewProvider = FutureProvider<List<BookProgressOverview>>((
@@ -94,7 +127,7 @@ final progressOverviewProvider = FutureProvider<List<BookProgressOverview>>((
       .order('sort_order');
   final booksRes = await client
       .from('books')
-      .select('id, level_id, title')
+      .select('id, level_id, title, slug')
       .order('sort_order');
   final lessonsRes = await client
       .from('lessons')
@@ -118,7 +151,7 @@ final progressOverviewProvider = FutureProvider<List<BookProgressOverview>>((
       .eq('kind', 'lesson');
   final attemptsRes = await client
       .from('quiz_attempts')
-      .select('quiz_id, passed, started_at, finished_at')
+      .select('quiz_id, passed, score, total, started_at, finished_at')
       .eq('user_id', userId);
 
   final levels = (levelsRes as List).cast<Map<String, dynamic>>();
@@ -153,21 +186,27 @@ final progressOverviewProvider = FutureProvider<List<BookProgressOverview>>((
   final readingByLesson = {for (final r in readings) r.lessonId: r};
   final audioByLesson = {for (final a in audios) a.lessonId: a};
   final audioDurationByLesson = <String, int>{};
+  final audioLessonIds = <String>{};
   for (final asset in audioAssets) {
     final lessonId = asset['lesson_id'] as String?;
     final duration = (asset['duration_sec'] as num?)?.toInt();
-    if (lessonId != null && duration != null && duration > 0) {
-      audioDurationByLesson[lessonId] = duration;
+    if (lessonId != null) {
+      audioLessonIds.add(lessonId);
+      if (duration != null && duration > 0) {
+        audioDurationByLesson[lessonId] = duration;
+      }
     }
   }
 
   final quizLessonById = <String, String>{};
+  final quizIdByLesson = <String, String>{};
   final quizIdsByBook = <String, Set<String>>{};
   for (final quiz in quizzes) {
     final quizId = quiz['id'] as String;
     final lessonId = quiz['lesson_id'] as String;
     final bookId = lessonBookById[lessonId];
     quizLessonById[quizId] = lessonId;
+    quizIdByLesson[lessonId] = quizId;
     if (bookId != null) {
       quizIdsByBook.putIfAbsent(bookId, () => <String>{}).add(quizId);
     }
@@ -211,8 +250,11 @@ final progressOverviewProvider = FutureProvider<List<BookProgressOverview>>((
         readingByLesson: readingByLesson,
         audioByLesson: audioByLesson,
         audioDurationByLesson: audioDurationByLesson,
+        audioLessonIds: audioLessonIds,
+        quizIdByLesson: quizIdByLesson,
         quizIds: quizIdsByBook[book['id'] as String] ?? const <String>{},
         passedQuizIds: passedQuizIds,
+        attempts: attempts,
         latestActivityByLesson: latestActivityByLesson,
         lessonById: lessonById,
       ),
@@ -226,33 +268,76 @@ BookProgressOverview _buildOverview({
   required Map<String, ReadingProgress> readingByLesson,
   required Map<String, AudioProgress> audioByLesson,
   required Map<String, int> audioDurationByLesson,
+  required Set<String> audioLessonIds,
+  required Map<String, String> quizIdByLesson,
   required Set<String> quizIds,
   required Set<String> passedQuizIds,
+  required List<Map<String, dynamic>> attempts,
   required Map<String, DateTime> latestActivityByLesson,
   required Map<String, Map<String, dynamic>> lessonById,
 }) {
   var readCompleted = 0;
   var audioCompleted = 0;
   var pagesRead = 0;
+  var pagesToday = 0;
   var secondsListened = 0;
+  var secondsThisWeek = 0;
+  var totalAudioLessons = 0;
   String? lastLessonId;
   DateTime? lastActivityAt;
+  int? nextLessonNumber;
+  String? nextLessonTitle;
+  String? nextStepLabel;
+  final studyDayKeys = <String>{};
+  final now = DateTime.now();
+  final weekStart = _startOfWeek(now);
 
   for (final lesson in lessons) {
     final lessonId = lesson['id'] as String;
     final reading = readingByLesson[lessonId];
     if (reading != null) {
       if (reading.isCompleted) readCompleted++;
-      pagesRead += _pagesReadForLesson(lesson, reading.lastPage);
+      final pagesForLesson = _pagesReadForLesson(lesson, reading.lastPage);
+      pagesRead += pagesForLesson;
+      if (_isSameLocalDay(reading.updatedAt, now)) {
+        pagesToday += pagesForLesson;
+      }
+      _rememberStudyDay(studyDayKeys, reading.updatedAt);
     }
 
     final audio = audioByLesson[lessonId];
+    if (audioLessonIds.contains(lessonId)) {
+      totalAudioLessons++;
+    }
     if (audio != null) {
       if (audio.isCompleted) audioCompleted++;
       final duration = audioDurationByLesson[lessonId];
-      secondsListened += duration == null
+      final listened = duration == null
           ? audio.lastPositionSec
           : audio.lastPositionSec.clamp(0, duration).toInt();
+      secondsListened += listened;
+      if (_isOnOrAfterLocalDay(audio.updatedAt, weekStart)) {
+        secondsThisWeek += listened;
+      }
+      _rememberStudyDay(studyDayKeys, audio.updatedAt);
+    }
+
+    if (nextLessonNumber == null) {
+      final quizId = quizIdByLesson[lessonId];
+      if (!(reading?.isCompleted ?? false)) {
+        nextLessonNumber = (lesson['number'] as num?)?.toInt();
+        nextLessonTitle = lesson['title'] as String?;
+        nextStepLabel = 'Continuar lectura';
+      } else if (audioLessonIds.contains(lessonId) &&
+          !(audio?.isCompleted ?? false)) {
+        nextLessonNumber = (lesson['number'] as num?)?.toInt();
+        nextLessonTitle = lesson['title'] as String?;
+        nextStepLabel = 'Escuchar audio';
+      } else if (quizId != null && !passedQuizIds.contains(quizId)) {
+        nextLessonNumber = (lesson['number'] as num?)?.toInt();
+        nextLessonTitle = lesson['title'] as String?;
+        nextStepLabel = 'Resolver quiz';
+      }
     }
 
     final activity = latestActivityByLesson[lessonId];
@@ -265,21 +350,46 @@ BookProgressOverview _buildOverview({
 
   final lastLesson = lastLessonId == null ? null : lessonById[lastLessonId];
   final quizPassed = quizIds.where(passedQuizIds.contains).length;
+  var quizAttempts = 0;
+  var quizScore = 0;
+  var quizAnswered = 0;
+  for (final attempt in attempts) {
+    final quizId = attempt['quiz_id'] as String?;
+    if (quizId == null || !quizIds.contains(quizId)) continue;
+    quizAttempts++;
+    quizScore += (attempt['score'] as num?)?.toInt() ?? 0;
+    quizAnswered += (attempt['total'] as num?)?.toInt() ?? 0;
+    _rememberStudyDay(
+      studyDayKeys,
+      _parseDate(attempt['finished_at']) ?? _parseDate(attempt['started_at']),
+    );
+  }
 
   return BookProgressOverview(
     bookId: book['id'] as String,
+    bookSlug: book['slug'] as String,
     bookTitle: book['title'] as String,
     levelName: levelName,
     totalLessons: lessons.length,
+    totalAudioLessons: totalAudioLessons,
     readCompleted: readCompleted,
     audioCompleted: audioCompleted,
     quizTotal: quizIds.length,
     quizPassed: quizPassed,
+    quizAttempts: quizAttempts,
+    quizScore: quizScore,
+    quizAnswered: quizAnswered,
     pagesRead: pagesRead,
+    pagesToday: pagesToday,
     minutesListened: (secondsListened / 60).round(),
+    minutesThisWeek: (secondsThisWeek / 60).round(),
     lastLessonNumber: (lastLesson?['number'] as num?)?.toInt(),
     lastLessonTitle: lastLesson?['title'] as String?,
     lastActivityAt: lastActivityAt,
+    nextLessonNumber: nextLessonNumber,
+    nextLessonTitle: nextLessonTitle,
+    nextStepLabel: nextStepLabel,
+    studyDayKeys: studyDayKeys.toList()..sort(),
   );
 }
 
@@ -296,4 +406,35 @@ int _pagesReadForLesson(Map<String, dynamic> lesson, int lastPage) {
 DateTime? _parseDate(Object? value) {
   if (value is String) return DateTime.tryParse(value);
   return null;
+}
+
+DateTime _startOfWeek(DateTime date) {
+  final local = DateTime(date.year, date.month, date.day);
+  return local.subtract(Duration(days: local.weekday - DateTime.monday));
+}
+
+bool _isSameLocalDay(DateTime? a, DateTime b) {
+  if (a == null) return false;
+  final local = a.toLocal();
+  return local.year == b.year && local.month == b.month && local.day == b.day;
+}
+
+bool _isOnOrAfterLocalDay(DateTime? date, DateTime start) {
+  if (date == null) return false;
+  final local = date.toLocal();
+  final day = DateTime(local.year, local.month, local.day);
+  return !day.isBefore(start);
+}
+
+void _rememberStudyDay(Set<String> keys, DateTime? date) {
+  if (date == null) return;
+  final local = date.toLocal();
+  keys.add(_dayKey(local));
+}
+
+String _dayKey(DateTime date) {
+  final local = DateTime(date.year, date.month, date.day);
+  final month = local.month.toString().padLeft(2, '0');
+  final day = local.day.toString().padLeft(2, '0');
+  return '${local.year}-$month-$day';
 }

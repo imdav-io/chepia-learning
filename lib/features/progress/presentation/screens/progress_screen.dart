@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../l10n/generated/app_localizations.dart';
 import '../controllers/progress_providers.dart';
@@ -44,6 +45,21 @@ class ProgressScreen extends ConsumerWidget {
             0,
             (sum, b) => sum + b.quizPassed,
           );
+          final minutesThisWeek = books.fold<int>(
+            0,
+            (sum, b) => sum + b.minutesThisWeek,
+          );
+          final pagesToday = books.fold<int>(0, (sum, b) => sum + b.pagesToday);
+          final quizScore = books.fold<int>(0, (sum, b) => sum + b.quizScore);
+          final quizAnswered = books.fold<int>(
+            0,
+            (sum, b) => sum + b.quizAnswered,
+          );
+          final quizAccuracy = quizAnswered == 0
+              ? 0
+              : ((quizScore / quizAnswered) * 100).round().clamp(0, 100);
+          final streak = _currentStreak(books);
+          final nextBook = _nextBook(books);
           final average =
               books.fold<double>(0, (sum, b) => sum + b.completionRatio) /
               books.length;
@@ -62,8 +78,16 @@ class ProgressScreen extends ConsumerWidget {
                   pagesRead: totalPages,
                   minutesListened: totalMinutes,
                   quizzesPassed: passedQuizzes,
+                  pagesToday: pagesToday,
+                  minutesThisWeek: minutesThisWeek,
+                  quizAccuracy: quizAccuracy,
+                  streakDays: streak,
                 ),
                 const SizedBox(height: 16),
+                if (nextBook != null) ...[
+                  _NextActionCard(book: nextBook),
+                  const SizedBox(height: 16),
+                ],
                 Text(
                   'Por libro',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -92,12 +116,20 @@ class _ProgressHeader extends StatelessWidget {
     required this.pagesRead,
     required this.minutesListened,
     required this.quizzesPassed,
+    required this.pagesToday,
+    required this.minutesThisWeek,
+    required this.quizAccuracy,
+    required this.streakDays,
   });
 
   final double completion;
   final int pagesRead;
   final int minutesListened;
   final int quizzesPassed;
+  final int pagesToday;
+  final int minutesThisWeek;
+  final int quizAccuracy;
+  final int streakDays;
 
   @override
   Widget build(BuildContext context) {
@@ -164,7 +196,80 @@ class _ProgressHeader extends StatelessWidget {
                 label: 'Quizzes',
                 value: '$quizzesPassed',
               ),
+              _MetricPill(
+                icon: Icons.local_fire_department_outlined,
+                label: 'Racha',
+                value: '$streakDays d',
+              ),
+              _MetricPill(
+                icon: Icons.today_outlined,
+                label: 'Hoy',
+                value: '$pagesToday pág.',
+              ),
+              _MetricPill(
+                icon: Icons.calendar_view_week_outlined,
+                label: 'Semana',
+                value: _formatMinutes(minutesThisWeek),
+              ),
+              _MetricPill(
+                icon: Icons.track_changes_outlined,
+                label: 'Precisión',
+                value: '$quizAccuracy%',
+              ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NextActionCard extends StatelessWidget {
+  const _NextActionCard({required this.book});
+
+  final BookProgressOverview book;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colors.secondaryContainer,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.auto_awesome_outlined, color: colors.onSecondaryContainer),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  book.nextStepLabel ?? 'Continuar',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: colors.onSecondaryContainer,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Lesson ${book.nextLessonNumber}: ${book.nextLessonTitle}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colors.onSecondaryContainer,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          FilledButton.tonalIcon(
+            onPressed: () => context.push('/book/${book.bookSlug}'),
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('Abrir'),
           ),
         ],
       ),
@@ -247,7 +352,8 @@ class _BookProgressCard extends StatelessWidget {
                 ),
                 _TinyStat(
                   icon: Icons.volume_up_outlined,
-                  text: '${book.audioCompleted}/${book.totalLessons} audios',
+                  text:
+                      '${book.audioCompleted}/${book.totalAudioLessons} audios',
                 ),
                 _TinyStat(
                   icon: Icons.quiz_outlined,
@@ -261,8 +367,54 @@ class _BookProgressCard extends StatelessWidget {
                   icon: Icons.timer_outlined,
                   text: _formatMinutes(book.minutesListened),
                 ),
+                _TinyStat(
+                  icon: Icons.today_outlined,
+                  text: '${book.pagesToday} pág. hoy',
+                ),
+                _TinyStat(
+                  icon: Icons.calendar_view_week_outlined,
+                  text: '${_formatMinutes(book.minutesThisWeek)} semana',
+                ),
+                _TinyStat(
+                  icon: Icons.track_changes_outlined,
+                  text: '${book.quizAccuracyPercent}% precisión',
+                ),
               ],
             ),
+            if (book.nextLessonNumber != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer.withValues(alpha: 0.62),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.flag_outlined,
+                      size: 18,
+                      color: colors.onPrimaryContainer,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${book.nextStepLabel}: Lesson ${book.nextLessonNumber}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: colors.onPrimaryContainer,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -378,4 +530,40 @@ String _formatMinutes(int minutes) {
   final rest = minutes.remainder(60);
   if (rest == 0) return '${hours}h';
   return '${hours}h ${rest}m';
+}
+
+BookProgressOverview? _nextBook(List<BookProgressOverview> books) {
+  final candidates = books
+      .where((book) => book.nextLessonNumber != null)
+      .toList(growable: false);
+  if (candidates.isEmpty) return null;
+  candidates.sort((a, b) {
+    final aDate = a.lastActivityAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final bDate = b.lastActivityAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    return bDate.compareTo(aDate);
+  });
+  return candidates.first;
+}
+
+int _currentStreak(List<BookProgressOverview> books) {
+  final days = <String>{};
+  for (final book in books) {
+    days.addAll(book.studyDayKeys);
+  }
+  if (days.isEmpty) return 0;
+
+  var current = DateTime.now();
+  var streak = 0;
+  while (days.contains(_dayKey(current))) {
+    streak++;
+    current = current.subtract(const Duration(days: 1));
+  }
+  return streak;
+}
+
+String _dayKey(DateTime date) {
+  final local = DateTime(date.year, date.month, date.day);
+  final month = local.month.toString().padLeft(2, '0');
+  final day = local.day.toString().padLeft(2, '0');
+  return '${local.year}-$month-$day';
 }
