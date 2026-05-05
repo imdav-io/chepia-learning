@@ -29,6 +29,12 @@ final booksByLevelProvider = FutureProvider.family<List<Book>, String>((
   return ref.watch(catalogRepositoryProvider).fetchBooksByLevel(levelCode);
 });
 
+const _optimizedPageBookSlugs = {
+  'as-it-is-book-1',
+  'as-it-is-book-2',
+  'as-it-is-book-3',
+};
+
 final lessonsProvider = FutureProvider.family<List<Lesson>, String>((
   ref,
   bookId,
@@ -157,24 +163,30 @@ class BookReaderData {
     required this.bookId,
     required this.bookTitle,
     required this.bookSlug,
+    required this.isOptimized,
     required this.pdfUrl,
     required this.pdfKey,
     required this.pageManifestUrl,
     required this.pageManifestKey,
     required this.studyGuideUrl,
     required this.studyGuideKey,
+    required this.studyGuideManifestUrl,
+    required this.studyGuideManifestKey,
     required this.lessons,
   });
 
   final String bookId;
   final String bookTitle;
   final String bookSlug;
+  final bool isOptimized;
   final String? pdfUrl;
   final String? pdfKey;
   final String? pageManifestUrl;
   final String? pageManifestKey;
   final String? studyGuideUrl;
   final String? studyGuideKey;
+  final String? studyGuideManifestUrl;
+  final String? studyGuideManifestKey;
   final List<LessonWithAudio> lessons;
 }
 
@@ -197,26 +209,51 @@ final bookReaderDataProvider = FutureProvider.family<BookReaderData, String>((
     throw StateError('Libro no encontrado: $bookSlug');
   }
   final bookId = book['id'] as String;
+  final resolvedBookSlug = book['slug'] as String;
+  final isOptimized = _optimizedPageBookSlugs.contains(resolvedBookSlug);
 
-  final pdf = await catalog.fetchBookPdf(bookId);
+  // En libros optimizados, el PDF principal solo se necesita en modo offline.
+  // Lo cargamos bajo demanda al abrir ese sheet (ver lazyBookPdfProvider).
+  Asset? pdf;
+  String? pdfUrl;
+  if (!isOptimized) {
+    pdf = await catalog.fetchBookPdf(bookId);
+    pdfUrl = pdf == null ? null : await assetRepo.resolveUrl(pdf);
+  }
+
   final studyGuide = await _tryFetchAsset(
     () => catalog.fetchBookStudyGuide(bookId),
     'Study guide',
   );
-  final pdfUrl = pdf == null ? null : await assetRepo.resolveUrl(pdf);
   String? pageManifestKey;
   String? pageManifestUrl;
-  if (book['slug'] == 'as-it-is-book-1') {
-    pageManifestKey = 'books/${book['slug']}/pages/v1/manifest.json';
+  if (isOptimized) {
+    pageManifestKey = 'books/$resolvedBookSlug/pages/v1/manifest.json';
     pageManifestUrl = await _tryResolveUrl(
       assetRepo,
       Asset(
-        id: 'page-manifest-${book['slug']}',
+        id: 'page-manifest-$resolvedBookSlug',
         kind: AssetKind.pdf,
         storagePath: pageManifestKey,
         bookId: bookId,
       ),
       'Manifest de páginas',
+    );
+  }
+  String? studyGuideManifestKey;
+  String? studyGuideManifestUrl;
+  if (studyGuide != null && isOptimized) {
+    studyGuideManifestKey =
+        'books/$resolvedBookSlug/study-guide/v1/manifest.json';
+    studyGuideManifestUrl = await _tryResolveUrl(
+      assetRepo,
+      Asset(
+        id: 'study-guide-manifest-$resolvedBookSlug',
+        kind: AssetKind.pdf,
+        storagePath: studyGuideManifestKey,
+        bookId: bookId,
+      ),
+      'Manifest de study guide',
     );
   }
   final studyGuideUrl = await _tryResolveUrl(
@@ -243,13 +280,34 @@ final bookReaderDataProvider = FutureProvider.family<BookReaderData, String>((
   return BookReaderData(
     bookId: bookId,
     bookTitle: book['title'] as String,
-    bookSlug: book['slug'] as String,
+    bookSlug: resolvedBookSlug,
+    isOptimized: isOptimized,
     pdfUrl: pdfUrl,
     pdfKey: pdf?.storagePath,
     pageManifestUrl: pageManifestUrl,
     pageManifestKey: pageManifestKey,
     studyGuideUrl: studyGuideUrl,
     studyGuideKey: studyGuide?.storagePath,
+    studyGuideManifestUrl: studyGuideManifestUrl,
+    studyGuideManifestKey: studyGuideManifestKey,
     lessons: lessonsWithAudio,
   );
+});
+
+/// Carga bajo demanda el PDF principal de un libro optimizado.
+/// Lo usa el sheet de modo offline para no penalizar la apertura del lector.
+final lazyBookPdfProvider = FutureProvider.family<({String? key, String? url})?, String>((
+  ref,
+  bookId,
+) async {
+  final catalog = ref.watch(catalogRepositoryProvider);
+  final assetRepo = ref.watch(assetRepositoryProvider);
+  final pdf = await _tryFetchAsset(
+    () => catalog.fetchBookPdf(bookId),
+    'PDF principal (offline)',
+  );
+  if (pdf == null) return null;
+  final url = await _tryResolveUrl(assetRepo, pdf, 'PDF principal (offline)');
+  if (url == null) return null;
+  return (key: pdf.storagePath, url: url);
 });

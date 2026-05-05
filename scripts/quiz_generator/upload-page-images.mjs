@@ -1,11 +1,16 @@
 // Sube páginas ya renderizadas a Supabase Storage y crea un manifest.
 //
-// Fase 1: Book 1. Usa las imágenes generadas por scripts/convert-pdf-to-images.sh:
-//   out/pages/as-it-is-book-1/page-001.jpg ...
+// Usa las imágenes generadas por scripts/convert-pdf-to-images.sh:
+//   out/pages/<book-slug>/page-001.jpg ...
+//   out/study-guides/<book-slug>/page-001.jpg ...
 //
 // Uso:
 //   cd scripts/quiz_generator
 //   node upload-page-images.mjs --book=as-it-is-book-1
+//   node upload-page-images.mjs --book=as-it-is-book-2
+//   node upload-page-images.mjs --book=as-it-is-book-3
+//   node upload-page-images.mjs --book=as-it-is-book-1 --kind=study-guide
+//   node upload-page-images.mjs --book=as-it-is-book-2 --kind=study-guide
 
 import 'dotenv/config';
 import fs from 'node:fs/promises';
@@ -29,8 +34,15 @@ const args = Object.fromEntries(
 );
 
 const BOOK_SLUG = args.book ?? 'as-it-is-book-1';
-const PAGES_DIR = path.resolve('./out/pages', BOOK_SLUG);
-const REMOTE_DIR = `books/${BOOK_SLUG}/pages/v1`;
+const KIND = args.kind ?? 'pages'; // 'pages' | 'study-guide'
+if (!['pages', 'study-guide'].includes(KIND)) {
+  console.error(`--kind debe ser 'pages' o 'study-guide' (recibí "${KIND}")`);
+  process.exit(1);
+}
+const LOCAL_SUBDIR = KIND === 'study-guide' ? 'study-guides' : 'pages';
+const REMOTE_KIND_SEGMENT = KIND === 'study-guide' ? 'study-guide' : 'pages';
+const PAGES_DIR = path.resolve('./out', LOCAL_SUBDIR, BOOK_SLUG);
+const REMOTE_DIR = `books/${BOOK_SLUG}/${REMOTE_KIND_SEGMENT}/v1`;
 const BUCKET = 'content';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -60,11 +72,18 @@ function jpegSize(buf) {
 }
 
 async function upload(remotePath, buffer, contentType) {
-  const { error } = await supabase.storage.from(BUCKET).upload(remotePath, buffer, {
-    contentType,
-    upsert: true,
-  });
-  if (error) throw new Error(`${remotePath}: ${error.message}`);
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const { error } = await supabase.storage.from(BUCKET).upload(remotePath, buffer, {
+      contentType,
+      upsert: true,
+    });
+    if (!error) return;
+    lastError = error;
+    await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+  }
+  const detail = lastError?.message || lastError?.error || JSON.stringify(lastError);
+  throw new Error(`${remotePath}: ${detail}`);
 }
 
 async function main() {
@@ -108,6 +127,7 @@ async function main() {
   const manifest = {
     version: 1,
     bookSlug: BOOK_SLUG,
+    kind: KIND,
     generatedAt: new Date().toISOString(),
     pageCount: pages.length,
     totalBytes,

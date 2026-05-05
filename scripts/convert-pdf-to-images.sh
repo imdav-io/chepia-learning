@@ -12,6 +12,7 @@ set -euo pipefail
 CONTENT_DIR="${CONTENT_DIR:-$HOME/Downloads/As it is}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OUT_DIR="$SCRIPT_DIR/quiz_generator/out/pages"
+SG_OUT_DIR="$SCRIPT_DIR/quiz_generator/out/study-guides"
 DPI="${DPI:-120}"
 
 if ! command -v pdftoppm >/dev/null 2>&1; then
@@ -55,8 +56,52 @@ convert_book() {
   echo "       $count páginas convertidas"
 }
 
+convert_study_guide() {
+  local folder="$1"
+  local slug="$2"
+  local book_root="$CONTENT_DIR/$folder/Book"
+  local pdf=""
+
+  # Busca el study guide. Acepta nombres comunes y, si no, cualquier PDF
+  # cuyo nombre contenga "Study Guide".
+  for candidate in "study_guide.pdf" "Study Guide.pdf"; do
+    if [ -f "$book_root/$candidate" ]; then
+      pdf="$book_root/$candidate"
+      break
+    fi
+  done
+  if [ -z "$pdf" ]; then
+    pdf="$(find "$book_root" -maxdepth 1 -type f -iname "*study*guide*.pdf" -print -quit 2>/dev/null || true)"
+  fi
+
+  if [ -z "$pdf" ]; then
+    echo "[skip-sg] Study guide no encontrado para $folder"
+    return
+  fi
+
+  local out="$SG_OUT_DIR/$slug"
+  mkdir -p "$out"
+
+  if compgen -G "$out/page-*.jpg" >/dev/null; then
+    local existing
+    existing=$(find "$out" -name "page-*.jpg" | wc -l | tr -d ' ')
+    echo "[skip-sg] $slug: ya hay $existing imágenes en $out"
+    return
+  fi
+
+  echo "[conv-sg] $pdf -> $out/page-*.jpg (DPI $DPI, JPEG q70)"
+  pdftoppm -jpeg -jpegopt quality=70 -r "$DPI" "$pdf" "$out/page"
+  local count
+  count=$(find "$out" -name "page-*.jpg" | wc -l | tr -d ' ')
+  echo "         $count páginas convertidas"
+}
+
 convert_book "Book 1" "as-it-is-book-1"
 convert_book "Book 2" "as-it-is-book-2"
 convert_book "Book 3" "as-it-is-book-3"
+
+convert_study_guide "Book 1" "as-it-is-book-1"
+convert_study_guide "Book 2" "as-it-is-book-2"
+convert_study_guide "Book 3" "as-it-is-book-3"
 
 echo "[DONE]"

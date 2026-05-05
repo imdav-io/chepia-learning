@@ -15,6 +15,7 @@ Future<void> main() async {
 
   await dotenv.load(fileName: '.env');
 
+  Object? supabaseInitError;
   try {
     Env.assertConfigured();
     await Supabase.initialize(
@@ -24,6 +25,7 @@ Future<void> main() async {
     );
   } catch (e, st) {
     AppLogger.error('Supabase init failed', e, st);
+    supabaseInitError = e;
   }
 
   await Hive.initFlutter();
@@ -41,5 +43,9 @@ Future<void> main() async {
     }
   }
 
-  runApp(const ProviderScope(child: ChepiaApp()));
+  runApp(
+    ProviderScope(
+      child: ChepiaApp(supabaseInitError: supabaseInitError),
+    ),
+  );
 }

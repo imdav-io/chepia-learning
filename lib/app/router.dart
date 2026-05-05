@@ -27,6 +27,8 @@ class _RouterRefreshNotifier extends ChangeNotifier {
   }
   late final StreamSubscription<dynamic> _sub;
 
+  void notify() => notifyListeners();
+
   @override
   void dispose() {
     _sub.cancel();
@@ -37,6 +39,8 @@ class _RouterRefreshNotifier extends ChangeNotifier {
 final goRouterProvider = Provider<GoRouter>((ref) {
   final authRepo = ref.watch(authRepositoryProvider);
   final notifier = _RouterRefreshNotifier(authRepo.authStateChanges());
+  // Re-evaluamos redirect cuando termina el bootstrap de auth.
+  ref.listen(authBootstrapProvider, (_, _) => notifier.notify());
   ref.onDispose(notifier.dispose);
 
   return GoRouter(
@@ -57,24 +61,23 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       ),
     ),
     redirect: (context, state) {
-      final user = authRepo.currentUser;
       final loc = state.matchedLocation;
+      final bootstrap = ref.read(authBootstrapProvider);
+
+      // Mientras Supabase termina de restaurar la sesión persistida,
+      // mantenemos al usuario en /splash en vez de mandarlo a /sign-in.
+      if (!bootstrap.hasValue) {
+        return loc == '/splash' ? null : '/splash';
+      }
+
+      final user = authRepo.currentUser;
       final isSplash = loc == '/splash';
       final isAuth = loc == '/sign-in';
 
-      // Log detallado para debug
-      // ignore: avoid_print
-      print('[router] loc=$loc user=${user?.email ?? 'null'}');
-
-      // Splash redirige según haya o no sesión
       if (isSplash) {
         return user == null ? '/sign-in' : '/';
       }
-
-      // Sin sesión y no estoy en sign-in → ir a sign-in
       if (user == null && !isAuth) return '/sign-in';
-
-      // Con sesión y estoy en sign-in → ir al catálogo
       if (user != null && isAuth) return '/';
 
       return null;

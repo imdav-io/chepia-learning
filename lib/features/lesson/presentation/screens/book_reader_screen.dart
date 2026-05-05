@@ -55,7 +55,8 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
   }
 
   Future<void> _showOfflineSheet(BookReaderData data) async {
-    final assets = _offlineAssetsFor(data);
+    final assets = await _offlineAssetsFor(data);
+    if (!mounted) return;
     var downloading = false;
     var downloaded = 0;
     String? currentLabel;
@@ -187,14 +188,22 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
     );
   }
 
-  List<_OfflineAsset> _offlineAssetsFor(BookReaderData data) {
+  Future<List<_OfflineAsset>> _offlineAssetsFor(BookReaderData data) async {
     final assets = <_OfflineAsset>[];
-    if (data.pdfUrl != null && data.pdfKey != null) {
+
+    String? pdfKey = data.pdfKey;
+    String? pdfUrl = data.pdfUrl;
+    if (data.isOptimized && (pdfKey == null || pdfUrl == null)) {
+      final lazy = await ref.read(lazyBookPdfProvider(data.bookId).future);
+      pdfKey = lazy?.key;
+      pdfUrl = lazy?.url;
+    }
+    if (pdfKey != null && pdfUrl != null) {
       assets.add(
         _OfflineAsset(
           label: 'PDF principal',
-          key: data.pdfKey!,
-          url: data.pdfUrl!,
+          key: pdfKey,
+          url: pdfUrl,
           kind: 'pdf',
         ),
       );
@@ -686,12 +695,7 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
                                           startPage: _initialPdfPage,
                                           onPageChanged: _onReadingPageChanged,
                                         ),
-                                        LessonPdfReader(
-                                          pdfUrl: data.studyGuideUrl,
-                                          cacheKey: data.studyGuideKey,
-                                          emptyMessage:
-                                              'Este libro aún no tiene study guide asociado.',
-                                        ),
+                                        _StudyGuideReader(data: data),
                                       ],
                                     ),
                                   ),
@@ -730,7 +734,7 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
   }
 }
 
-class _MainBookReader extends StatelessWidget {
+class _MainBookReader extends ConsumerWidget {
   const _MainBookReader({
     required this.data,
     required this.startPage,
@@ -742,7 +746,7 @@ class _MainBookReader extends StatelessWidget {
   final ValueChanged<int> onPageChanged;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final manifestUrl = data.pageManifestUrl;
     final manifestKey = data.pageManifestKey;
     if (manifestUrl != null && manifestKey != null) {
@@ -753,12 +757,77 @@ class _MainBookReader extends StatelessWidget {
         onPageChanged: onPageChanged,
       );
     }
+    if (data.isOptimized) {
+      return _ManifestErrorView(
+        message:
+            'No se pudieron cargar las páginas optimizadas de este libro.',
+        onRetry: () => ref.invalidate(bookReaderDataProvider(data.bookSlug)),
+      );
+    }
     return LessonPdfReader(
       pdfUrl: data.pdfUrl,
       cacheKey: data.pdfKey,
       startPage: startPage,
       onPageChanged: onPageChanged,
       emptyMessage: 'Este libro aún no tiene PDF principal asociado.',
+    );
+  }
+}
+
+class _StudyGuideReader extends ConsumerWidget {
+  const _StudyGuideReader({required this.data});
+
+  final BookReaderData data;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final manifestUrl = data.studyGuideManifestUrl;
+    final manifestKey = data.studyGuideManifestKey;
+    if (manifestUrl != null && manifestKey != null) {
+      return LessonPageImageReader(
+        manifestUrl: manifestUrl,
+        manifestCacheKey: manifestKey,
+      );
+    }
+    if (data.isOptimized && data.studyGuideKey != null) {
+      return _ManifestErrorView(
+        message:
+            'No se pudieron cargar las páginas del study guide.',
+        onRetry: () => ref.invalidate(bookReaderDataProvider(data.bookSlug)),
+      );
+    }
+    return LessonPdfReader(
+      pdfUrl: data.studyGuideUrl,
+      cacheKey: data.studyGuideKey,
+      emptyMessage: 'Este libro aún no tiene study guide asociado.',
+    );
+  }
+}
+
+class _ManifestErrorView extends StatelessWidget {
+  const _ManifestErrorView({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reintentar'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

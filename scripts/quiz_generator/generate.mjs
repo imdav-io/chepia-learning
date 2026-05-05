@@ -85,6 +85,29 @@ const META_REFERENCE_PATTERNS = [
   { re: /\bcomo se vio\b/i, label: 'frase meta "como se vio"' },
 ];
 
+const EXPLANATION_META_PATTERNS = [
+  {
+    re: /\besta pregunta\s+(?:eval[uú]a|mide|practica|refuerza|comprueba|verifica|se enfoca)\b/i,
+    label: 'explicación describe la pregunta en vez de justificar la respuesta',
+  },
+  {
+    re: /\b(?:eval[uú]a|mide|practica|refuerza|comprueba|verifica)\s+(?:el|la|los|las)\s+(?:uso|comprensi[oó]n|habilidad|conocimiento|vocabulario|gram[aá]tica|estructura)\b/i,
+    label: 'explicación pedagógica genérica',
+  },
+  {
+    re: /\b(?:this question|the question)\s+(?:tests|evaluates|checks|practices|focuses on)\b/i,
+    label: 'explicación meta en inglés',
+  },
+  {
+    re: /\bseg[uú]n\s+(?:el|la|los|las)?\s*(?:vocabulario|gram[aá]tica|contenido|tema|unidad|lecci[oó]n|material)\b/i,
+    label: 'explicación se apoya en el material en vez de justificar la respuesta',
+  },
+  {
+    re: /\bcomo\s+se\s+(?:presenta|muestra|enseña|practica|trabaja|ve)\b/i,
+    label: 'explicación habla de cómo aparece el contenido',
+  },
+];
+
 const BOOKS_META = {
   'as-it-is-book-1': { level: 'beginner', title: 'As it is — Book 1' },
   'as-it-is-book-2': { level: 'intermediate', title: 'As it is — Book 2' },
@@ -182,7 +205,17 @@ Reglas:
 - Cada true_false tiene 2 opciones ("True"/"False") con UNA correcta.
 - fill_blank deja "____" en el prompt y la respuesta correcta como una de 4 opciones.
 - Las preguntas y opciones DEBEN estar en inglés.
-- La explicación DEBE estar en español, breve (1-2 oraciones).
+- La explicación DEBE estar en español, breve (1-2 oraciones), y explicar POR QUÉ la respuesta correcta es correcta.
+- La explicación NO debe decir qué evalúa la pregunta. Prohibido: "esta pregunta evalúa...", "evalúa el uso correcto de...", "sirve para practicar...", "mide la comprensión...".
+- La explicación tampoco debe apoyarse en frases como "según el vocabulario", "como se presenta", "como se vio" o "en la unidad". Explica la regla, significado o dato directamente.
+- Siempre que sea natural, inicia con "La respuesta correcta es..." o menciona la opción correcta y después usa "porque...".
+- Buenas explicaciones:
+  - "La respuesta correcta es 'peaches' porque las palabras terminadas en -ch forman el plural con -es."
+  - "'Does' se usa con he/she/it en preguntas del present simple; por eso 'Does she...?' es correcto."
+  - "'Tired' significa cansado; las otras opciones expresan hambre, frío o tristeza."
+- Si la respuesta correcta es vocabulario, explica el significado o el matiz.
+- Si la respuesta correcta es gramática, explica la regla concreta.
+- Si la respuesta correcta es comprensión, explica el dato o la lógica del diálogo/situación.
 - Cada pregunta debe poder contestarse desde la habilidad practicada en la unidad, no desde memoria visual.
 - Usa distractores plausibles, no absurdos. Evita opciones demasiado obvias.
 - Varía formatos: completar oración, elegir respuesta natural, identificar uso correcto, significado en contexto y comprensión de diálogos.
@@ -234,6 +267,16 @@ function collectMetaReferenceIssues(value, location, issues) {
   }
 }
 
+function collectExplanationQualityIssues(value, location, issues) {
+  if (typeof value !== 'string') return;
+  for (const pattern of EXPLANATION_META_PATTERNS) {
+    if (pattern.re.test(value)) {
+      issues.push(`${location}: ${pattern.label} -> "${value.slice(0, 120)}"`);
+      break;
+    }
+  }
+}
+
 function validateQuestions(questions) {
   const issues = [];
   if (!Array.isArray(questions)) {
@@ -257,6 +300,7 @@ function validateQuestions(questions) {
     }
     collectMetaReferenceIssues(question.prompt, `${qLabel}.prompt`, issues);
     collectMetaReferenceIssues(question.explanation, `${qLabel}.explanation`, issues);
+    collectExplanationQualityIssues(question.explanation, `${qLabel}.explanation`, issues);
 
     const promptKey = String(question.prompt ?? '').trim().toLowerCase();
     if (promptKey) {
