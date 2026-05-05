@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/logging/app_logger.dart';
 import '../../../auth/presentation/controllers/auth_providers.dart';
 import '../../data/repositories/progress_repository_impl.dart';
 import '../../domain/entities/lesson_progress.dart';
@@ -121,53 +122,90 @@ final progressOverviewProvider = FutureProvider<List<BookProgressOverview>>((
   final userId = client.auth.currentUser?.id;
   if (userId == null) return const [];
 
-  final levelsRes = await client
-      .from('levels')
-      .select('id, name')
-      .order('sort_order');
-  final booksRes = await client
-      .from('books')
-      .select('id, level_id, title, slug')
-      .order('sort_order');
-  final lessonsRes = await client
-      .from('lessons')
-      .select('id, book_id, number, title, pdf_start_page, pdf_end_page')
-      .order('number');
-  final readingRes = await client
-      .from('reading_progress')
-      .select('lesson_id, last_page, is_completed, updated_at')
-      .eq('user_id', userId);
-  final audioRes = await client
-      .from('audio_progress')
-      .select('lesson_id, last_position_sec, is_completed, updated_at')
-      .eq('user_id', userId);
-  final audioAssetsRes = await client
-      .from('assets')
-      .select('lesson_id, duration_sec')
-      .eq('kind', 'audio');
-  final quizzesRes = await client
-      .from('quizzes')
-      .select('id, lesson_id')
-      .eq('kind', 'lesson');
-  final attemptsRes = await client
-      .from('quiz_attempts')
-      .select('quiz_id, passed, score, total, started_at, finished_at')
-      .eq('user_id', userId);
+  // Cada query se hace por separado y con fallback a lista vacía. Si una
+  // tabla auxiliar no existe o falla, la pantalla sigue mostrando el resto
+  // del progreso en vez de quedarse atorada.
+  Future<List<dynamic>> safeFetch(
+    String label,
+    Future<dynamic> Function() run,
+  ) async {
+    try {
+      final res = await run();
+      return res is List ? res : const <dynamic>[];
+    } catch (e, st) {
+      AppLogger.warn('progressOverview $label fallo', e, st);
+      return const <dynamic>[];
+    }
+  }
 
-  final levels = (levelsRes as List).cast<Map<String, dynamic>>();
-  final books = (booksRes as List).cast<Map<String, dynamic>>();
-  final lessons = (lessonsRes as List).cast<Map<String, dynamic>>();
-  final readings = (readingRes as List)
+  final results = await Future.wait([
+    safeFetch(
+      'levels',
+      () => client.from('levels').select('id, name').order('sort_order'),
+    ),
+    safeFetch(
+      'books',
+      () => client
+          .from('books')
+          .select('id, level_id, title, slug')
+          .order('sort_order'),
+    ),
+    safeFetch(
+      'lessons',
+      () => client
+          .from('lessons')
+          .select('id, book_id, number, title, pdf_start_page, pdf_end_page')
+          .order('number'),
+    ),
+    safeFetch(
+      'reading_progress',
+      () => client
+          .from('reading_progress')
+          .select('lesson_id, last_page, is_completed, updated_at')
+          .eq('user_id', userId),
+    ),
+    safeFetch(
+      'audio_progress',
+      () => client
+          .from('audio_progress')
+          .select('lesson_id, last_position_sec, is_completed, updated_at')
+          .eq('user_id', userId),
+    ),
+    safeFetch(
+      'audio_assets',
+      () => client
+          .from('assets')
+          .select('lesson_id, duration_sec')
+          .eq('kind', 'audio'),
+    ),
+    safeFetch(
+      'quizzes',
+      () =>
+          client.from('quizzes').select('id, lesson_id').eq('kind', 'lesson'),
+    ),
+    safeFetch(
+      'quiz_attempts',
+      () => client
+          .from('quiz_attempts')
+          .select('quiz_id, passed, score, total, started_at, finished_at')
+          .eq('user_id', userId),
+    ),
+  ]);
+
+  final levels = results[0].cast<Map<String, dynamic>>();
+  final books = results[1].cast<Map<String, dynamic>>();
+  final lessons = results[2].cast<Map<String, dynamic>>();
+  final readings = results[3]
       .cast<Map<String, dynamic>>()
       .map(ReadingProgress.fromMap)
       .toList();
-  final audios = (audioRes as List)
+  final audios = results[4]
       .cast<Map<String, dynamic>>()
       .map(AudioProgress.fromMap)
       .toList();
-  final audioAssets = (audioAssetsRes as List).cast<Map<String, dynamic>>();
-  final quizzes = (quizzesRes as List).cast<Map<String, dynamic>>();
-  final attempts = (attemptsRes as List).cast<Map<String, dynamic>>();
+  final audioAssets = results[5].cast<Map<String, dynamic>>();
+  final quizzes = results[6].cast<Map<String, dynamic>>();
+  final attempts = results[7].cast<Map<String, dynamic>>();
 
   final levelNameById = <String, String>{
     for (final row in levels) row['id'] as String: row['name'] as String,
@@ -245,7 +283,7 @@ final progressOverviewProvider = FutureProvider<List<BookProgressOverview>>((
     for (final book in books)
       _buildOverview(
         book: book,
-        levelName: levelNameById[book['level_id'] as String] ?? '',
+        levelName: levelNameById[book['level_id'] as String?] ?? '',
         lessons: lessonsByBook[book['id'] as String] ?? const [],
         readingByLesson: readingByLesson,
         audioByLesson: audioByLesson,

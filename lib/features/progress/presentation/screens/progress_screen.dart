@@ -60,9 +60,12 @@ class ProgressScreen extends ConsumerWidget {
               : ((quizScore / quizAnswered) * 100).round().clamp(0, 100);
           final streak = _currentStreak(books);
           final nextBook = _nextBook(books);
-          final average =
+          final rawAverage =
               books.fold<double>(0, (sum, b) => sum + b.completionRatio) /
               books.length;
+          // Defensa contra NaN/Infinity: cualquiera de esos rompe LinearProgressIndicator
+          // y crashea la pantalla con error de paint.
+          final average = rawAverage.isFinite ? rawAverage : 0.0;
 
           return RefreshIndicator(
             onRefresh: () async {
@@ -134,7 +137,8 @@ class _ProgressHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final percent = (completion * 100).round().clamp(0, 100);
+    final safeCompletion = completion.isFinite ? completion : 0.0;
+    final percent = (safeCompletion * 100).round().clamp(0, 100);
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -168,7 +172,7 @@ class _ProgressHeader extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: LinearProgressIndicator(
-                    value: completion.clamp(0, 1).toDouble(),
+                    value: safeCompletion.clamp(0, 1).toDouble(),
                     minHeight: 8,
                     borderRadius: BorderRadius.circular(99),
                   ),
@@ -328,7 +332,11 @@ class _BookProgressCard extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             LinearProgressIndicator(
-              value: book.completionRatio.clamp(0, 1).toDouble(),
+              value: (book.completionRatio.isFinite
+                      ? book.completionRatio
+                      : 0.0)
+                  .clamp(0, 1)
+                  .toDouble(),
               minHeight: 7,
               borderRadius: BorderRadius.circular(99),
             ),
@@ -474,6 +482,7 @@ class _PercentBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final safePercent = percent.clamp(0, 100);
     return SizedBox(
       width: 56,
       height: 56,
@@ -481,12 +490,12 @@ class _PercentBadge extends StatelessWidget {
         alignment: Alignment.center,
         children: [
           CircularProgressIndicator(
-            value: percent / 100,
+            value: safePercent / 100,
             strokeWidth: 5,
             backgroundColor: colors.surfaceContainerHighest,
           ),
           Text(
-            '$percent%',
+            '$safePercent%',
             style: Theme.of(
               context,
             ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
@@ -554,7 +563,10 @@ int _currentStreak(List<BookProgressOverview> books) {
 
   var current = DateTime.now();
   var streak = 0;
-  while (days.contains(_dayKey(current))) {
+  // Bound defensivo: aunque el set siempre debería tener un hueco que rompa
+  // el loop, evitamos cualquier riesgo de iteración infinita con un máximo de
+  // un año.
+  while (days.contains(_dayKey(current)) && streak < 365) {
     streak++;
     current = current.subtract(const Duration(days: 1));
   }
