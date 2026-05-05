@@ -609,6 +609,15 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
                       .valueOrNull
                       ?.length ??
                   0;
+        final curatedVocabularyCount = selected == null
+            ? 0
+            : ref
+                      .watch(
+                        curatedLessonVocabularyProvider(selected.lesson.id),
+                      )
+                      .valueOrNull
+                      ?.length ??
+                  0;
 
         final panel = LessonListPanel(
           title: data.bookTitle,
@@ -660,6 +669,7 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
                         isRead: selectedRead,
                         isHeard: selectedHeard,
                         savedWords: vocabularyCount,
+                        curatedWords: curatedVocabularyCount,
                         onQuizTap: () => _openQuiz(selected),
                         onFlashcardsTap: () => _openFlashcards(selected),
                         onVocabularyTap: () => _showVocabularySheet(selected),
@@ -838,6 +848,7 @@ class _StudyFlowStrip extends StatelessWidget {
     required this.isRead,
     required this.isHeard,
     required this.savedWords,
+    required this.curatedWords,
     required this.onQuizTap,
     required this.onFlashcardsTap,
     required this.onVocabularyTap,
@@ -847,6 +858,7 @@ class _StudyFlowStrip extends StatelessWidget {
   final bool isRead;
   final bool isHeard;
   final int savedWords;
+  final int curatedWords;
   final VoidCallback onQuizTap;
   final VoidCallback onFlashcardsTap;
   final VoidCallback onVocabularyTap;
@@ -921,9 +933,11 @@ class _StudyFlowStrip extends StatelessWidget {
             ),
             _FlowStepChip(
               icon: Icons.view_carousel_outlined,
-              label: 'Flashcards',
+              label: curatedWords > 0
+                  ? 'Flashcards · $curatedWords'
+                  : 'Flashcards',
               isDone: false,
-              isDisabled: savedWords == 0,
+              isDisabled: savedWords == 0 && curatedWords == 0,
               onTap: onFlashcardsTap,
             ),
           ],

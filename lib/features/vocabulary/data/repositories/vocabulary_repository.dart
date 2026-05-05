@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/errors/failure.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../domain/entities/lesson_vocabulary_term.dart';
 import '../../domain/entities/vocabulary_term.dart';
 
 class VocabularyRepository {
@@ -35,6 +36,27 @@ class VocabularyRepository {
           .toList();
     } catch (e, st) {
       AppLogger.warn('fetchForLesson vocabulary failed', e, st);
+      return const [];
+    }
+  }
+
+  Future<List<LessonVocabularyTerm>> fetchCuratedForLesson(
+    String lessonId,
+  ) async {
+    try {
+      final res = await _client
+          .from('lesson_vocabulary')
+          .select(
+            'id, lesson_id, term, meaning_es, example_en, pronunciation, sort_order',
+          )
+          .eq('lesson_id', lessonId)
+          .order('sort_order');
+      return (res as List)
+          .cast<Map<String, dynamic>>()
+          .map(LessonVocabularyTerm.fromMap)
+          .toList();
+    } catch (e, st) {
+      AppLogger.warn('fetchCuratedForLesson failed', e, st);
       return const [];
     }
   }
