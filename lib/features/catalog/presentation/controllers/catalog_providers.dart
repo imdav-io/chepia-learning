@@ -262,7 +262,8 @@ final bookReaderDataProvider = FutureProvider.family<BookReaderData, String>((
     'Study guide',
   );
 
-  final lessons = await catalog.fetchLessons(bookId);
+  final lessons = [...await catalog.fetchLessons(bookId)]
+    ..sort((a, b) => a.number.compareTo(b.number));
   final lessonsWithAudio = <LessonWithAudio>[];
   for (final l in lessons) {
     final a = await _tryFetchAsset(
@@ -296,18 +297,23 @@ final bookReaderDataProvider = FutureProvider.family<BookReaderData, String>((
 
 /// Carga bajo demanda el PDF principal de un libro optimizado.
 /// Lo usa el sheet de modo offline para no penalizar la apertura del lector.
-final lazyBookPdfProvider = FutureProvider.family<({String? key, String? url})?, String>((
-  ref,
-  bookId,
-) async {
-  final catalog = ref.watch(catalogRepositoryProvider);
-  final assetRepo = ref.watch(assetRepositoryProvider);
-  final pdf = await _tryFetchAsset(
-    () => catalog.fetchBookPdf(bookId),
-    'PDF principal (offline)',
-  );
-  if (pdf == null) return null;
-  final url = await _tryResolveUrl(assetRepo, pdf, 'PDF principal (offline)');
-  if (url == null) return null;
-  return (key: pdf.storagePath, url: url);
-});
+final lazyBookPdfProvider =
+    FutureProvider.family<({String? key, String? url})?, String>((
+      ref,
+      bookId,
+    ) async {
+      final catalog = ref.watch(catalogRepositoryProvider);
+      final assetRepo = ref.watch(assetRepositoryProvider);
+      final pdf = await _tryFetchAsset(
+        () => catalog.fetchBookPdf(bookId),
+        'PDF principal (offline)',
+      );
+      if (pdf == null) return null;
+      final url = await _tryResolveUrl(
+        assetRepo,
+        pdf,
+        'PDF principal (offline)',
+      );
+      if (url == null) return null;
+      return (key: pdf.storagePath, url: url);
+    });

@@ -15,6 +15,7 @@ import '../features/progress/presentation/screens/progress_screen.dart';
 import '../features/quiz/presentation/screens/quiz_screen.dart';
 import '../features/vocabulary/presentation/screens/flashcards_screen.dart';
 import 'main_shell.dart';
+import 'route_observer.dart';
 
 final _rootNavKey = GlobalKey<NavigatorState>();
 final _learnNavKey = GlobalKey<NavigatorState>();
@@ -46,6 +47,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     navigatorKey: _rootNavKey,
     initialLocation: '/splash',
+    observers: [appRouteObserver],
     refreshListenable: notifier,
     debugLogDiagnostics: true,
     errorBuilder: (context, state) => Scaffold(

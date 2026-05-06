@@ -15,12 +15,11 @@ class ProfileScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: Text(t.profileTitle)),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
-          ListTile(
-            leading: const CircleAvatar(child: Icon(Icons.person)),
-            title: Text(user?.displayName ?? user?.email ?? '—'),
-            subtitle: Text(user?.email ?? ''),
+          _ProfileHeader(
+            displayName: user?.displayName ?? user?.email ?? '—',
+            email: user?.email ?? '',
           ),
           const SizedBox(height: 16),
           Card(
@@ -48,6 +47,77 @@ class ProfileScreen extends ConsumerWidget {
               await ref.read(authRepositoryProvider).signOut();
               if (context.mounted) context.go('/sign-in');
             },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader({required this.displayName, required this.email});
+
+  final String displayName;
+  final String email;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            colors.primary.withValues(alpha: 0.18),
+            colors.surfaceContainerHigh,
+            colors.tertiary.withValues(alpha: 0.14),
+          ],
+        ),
+        border: Border.all(color: colors.primary.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: colors.primary.withValues(alpha: 0.16),
+              border: Border.all(color: colors.primary.withValues(alpha: 0.5)),
+              boxShadow: [
+                BoxShadow(
+                  color: colors.primary.withValues(alpha: 0.16),
+                  blurRadius: 20,
+                ),
+              ],
+            ),
+            child: Icon(Icons.person, color: colors.primary, size: 32),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  email,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
           ),
         ],
       ),

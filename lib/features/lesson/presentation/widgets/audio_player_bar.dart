@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../../../../app/route_observer.dart';
+
 typedef AudioPositionPersist = void Function(int positionSec, int? durationSec);
 
 class AudioPlayerBar extends StatefulWidget {
@@ -26,11 +28,13 @@ class AudioPlayerBar extends StatefulWidget {
   State<AudioPlayerBar> createState() => _AudioPlayerBarState();
 }
 
-class _AudioPlayerBarState extends State<AudioPlayerBar> {
+class _AudioPlayerBarState extends State<AudioPlayerBar>
+    with RouteAware, WidgetsBindingObserver {
   late final AudioPlayer _player;
   Timer? _persistTimer;
   StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<Duration>? _positionSub;
+  ModalRoute<dynamic>? _route;
   Object? _error;
   String? _restoredUrl;
   Duration? _loopStart;
@@ -40,6 +44,7 @@ class _AudioPlayerBarState extends State<AudioPlayerBar> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _player = AudioPlayer();
     _loadUrl();
     _positionSub = _player.positionStream.listen(_handlePositionTick);
@@ -74,6 +79,18 @@ class _AudioPlayerBarState extends State<AudioPlayerBar> {
     if (oldWidget.restorePositionSec != widget.restorePositionSec) {
       _restorePositionIfNeeded();
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final nextRoute = ModalRoute.of(context);
+    if (nextRoute == null || nextRoute == _route) return;
+    if (_route != null) {
+      appRouteObserver.unsubscribe(this);
+    }
+    _route = nextRoute;
+    appRouteObserver.subscribe(this, nextRoute);
   }
 
   Future<void> _loadUrl() async {
@@ -171,18 +188,55 @@ class _AudioPlayerBarState extends State<AudioPlayerBar> {
     });
   }
 
-  @override
-  void dispose() {
-    _persistTimer?.cancel();
-    _playerStateSub?.cancel();
-    _positionSub?.cancel();
+  void _persistCurrentPosition() {
     if (widget.onPositionPersist != null && _player.position.inSeconds > 0) {
       widget.onPositionPersist!(
         _player.position.inSeconds,
         _player.duration?.inSeconds,
       );
     }
-    _player.dispose();
+  }
+
+  Future<void> _pauseAndPersist() async {
+    _persistCurrentPosition();
+    try {
+      await _player.pause();
+    } catch (_) {
+      // La pausa es defensiva al salir de la ruta; si falla, no bloqueamos UI.
+    }
+  }
+
+  Future<void> _stopAndDisposePlayer() async {
+    _persistCurrentPosition();
+    try {
+      await _player.stop();
+    } finally {
+      await _player.dispose();
+    }
+  }
+
+  @override
+  void didPushNext() {
+    unawaited(_pauseAndPersist());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_pauseAndPersist());
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    appRouteObserver.unsubscribe(this);
+    _persistTimer?.cancel();
+    _playerStateSub?.cancel();
+    _positionSub?.cancel();
+    unawaited(_stopAndDisposePlayer());
     super.dispose();
   }
 
@@ -212,7 +266,7 @@ class _AudioPlayerBarState extends State<AudioPlayerBar> {
 
     return Material(
       elevation: 6,
-      color: colors.surface,
+      color: colors.surfaceContainerHigh,
       child: SafeArea(
         top: false,
         child: Container(
@@ -220,8 +274,15 @@ class _AudioPlayerBarState extends State<AudioPlayerBar> {
           constraints: const BoxConstraints(minHeight: 80),
           decoration: BoxDecoration(
             border: Border(
-              top: BorderSide(color: Theme.of(context).dividerColor),
+              top: BorderSide(color: colors.primary.withValues(alpha: 0.16)),
             ),
+            boxShadow: [
+              BoxShadow(
+                color: colors.primary.withValues(alpha: 0.1),
+                blurRadius: 24,
+                offset: const Offset(0, -8),
+              ),
+            ],
           ),
           child: !hasUrl
               ? Row(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../lesson/presentation/widgets/content_loading_view.dart';
 import '../../domain/entities/quiz.dart';
 import '../controllers/quiz_providers.dart';
 
@@ -23,7 +24,7 @@ class QuizScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: Text('Quiz · Lesson $lessonNumber')),
       body: quizAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const ContentLoadingView(status: 'Preparando quiz...'),
         error: (e, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -242,7 +243,7 @@ class _QuizRunnerState extends ConsumerState<_QuizRunner> {
       return _AttemptErrorView(message: _attemptError!, onRetry: _startAttempt);
     }
     if (_isStartingAttempt) {
-      return const Center(child: CircularProgressIndicator());
+      return const ContentLoadingView(status: 'Iniciando intento...');
     }
 
     final question = _questions[_index];
@@ -310,6 +311,7 @@ class _QuizRunnerState extends ConsumerState<_QuizRunner> {
                       ).colorScheme.primary.withValues(alpha: 0.08);
                       border = Theme.of(context).colorScheme.primary;
                     }
+                    bg ??= Theme.of(context).colorScheme.surfaceContainerHigh;
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
@@ -367,6 +369,9 @@ class _QuizRunnerState extends ConsumerState<_QuizRunner> {
                           context,
                         ).colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

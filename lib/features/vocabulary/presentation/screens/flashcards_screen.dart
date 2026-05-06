@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../catalog/presentation/controllers/catalog_providers.dart';
+import '../../../lesson/presentation/widgets/content_loading_view.dart';
 import '../../domain/entities/lesson_vocabulary_term.dart';
 import '../../domain/entities/vocabulary_term.dart';
 import '../controllers/vocabulary_providers.dart';
@@ -29,22 +30,21 @@ class _FlashcardData {
   final String? note;
 
   bool get hasBackContent =>
-      meaning != null || example != null || pronunciation != null || note != null;
+      meaning != null ||
+      example != null ||
+      pronunciation != null ||
+      note != null;
 
-  factory _FlashcardData.fromCurated(LessonVocabularyTerm t) =>
-      _FlashcardData(
-        id: t.id,
-        term: t.term,
-        meaning: t.meaningEs,
-        example: t.exampleEn,
-        pronunciation: t.pronunciation,
-      );
+  factory _FlashcardData.fromCurated(LessonVocabularyTerm t) => _FlashcardData(
+    id: t.id,
+    term: t.term,
+    meaning: t.meaningEs,
+    example: t.exampleEn,
+    pronunciation: t.pronunciation,
+  );
 
-  factory _FlashcardData.fromUser(VocabularyTerm t) => _FlashcardData(
-        id: t.id,
-        term: t.term,
-        note: t.note,
-      );
+  factory _FlashcardData.fromUser(VocabularyTerm t) =>
+      _FlashcardData(id: t.id, term: t.term, note: t.note);
 }
 
 enum _DeckSource { lesson, personal }
@@ -71,7 +71,8 @@ class FlashcardsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: Text('Flashcards · Lesson $lessonNumber')),
       body: lessonAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () =>
+            const ContentLoadingView(status: 'Barajando flashcards...'),
         error: (e, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -79,8 +80,9 @@ class FlashcardsScreen extends ConsumerWidget {
           ),
         ),
         data: (data) {
-          final curatedAsync =
-              ref.watch(curatedLessonVocabularyProvider(data.lesson.id));
+          final curatedAsync = ref.watch(
+            curatedLessonVocabularyProvider(data.lesson.id),
+          );
           final personalAsync = ref.watch(
             lessonVocabularyProvider((
               bookId: data.bookId,
@@ -89,7 +91,7 @@ class FlashcardsScreen extends ConsumerWidget {
           );
 
           if (curatedAsync.isLoading || personalAsync.isLoading) {
-            return const Center(child: CircularProgressIndicator());
+            return const ContentLoadingView(status: 'Barajando flashcards...');
           }
 
           final curated = curatedAsync.valueOrNull ?? const [];
@@ -274,22 +276,20 @@ class _FlashcardsGameState extends State<_FlashcardsGame> {
           widget.lessonTitle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 4),
         Text(
           widget.sourceLabel,
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: colors.onSurfaceVariant,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.labelMedium?.copyWith(color: colors.onSurfaceVariant),
         ),
         const SizedBox(height: 12),
         LinearProgressIndicator(
-          value: _deck.isEmpty
-              ? 0
-              : min(_index, _deck.length) / _deck.length,
+          value: _deck.isEmpty ? 0 : min(_index, _deck.length) / _deck.length,
           minHeight: 8,
           borderRadius: BorderRadius.circular(99),
         ),
@@ -335,9 +335,9 @@ class _FlashcardsGameState extends State<_FlashcardsGame> {
           Text(
             'Dominadas $_known · Repasar $_review',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: colors.onSurfaceVariant,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium?.copyWith(color: colors.onSurfaceVariant),
           ),
         ],
       ],
@@ -363,7 +363,9 @@ class _Flashcard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final fg = showBack ? colors.onSecondaryContainer : colors.onPrimaryContainer;
+    final fg = showBack
+        ? colors.onSecondaryContainer
+        : colors.onPrimaryContainer;
     return InkWell(
       onTap: onFlip,
       borderRadius: BorderRadius.circular(18),
@@ -386,18 +388,18 @@ class _Flashcard extends StatelessWidget {
                 Text(
                   showBack ? 'Significado' : 'Palabra',
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: fg.withValues(alpha: 0.78),
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.6,
-                      ),
+                    color: fg.withValues(alpha: 0.78),
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0,
+                  ),
                 ),
                 const Spacer(),
                 Text(
                   '${index + 1} / $total',
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: fg,
-                        fontWeight: FontWeight.w800,
-                      ),
+                    color: fg,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ],
             ),
@@ -415,8 +417,8 @@ class _Flashcard extends StatelessWidget {
             Text(
               showBack ? 'Tocá para volver' : 'Tocá para ver el significado',
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: fg.withValues(alpha: 0.62),
-                  ),
+                color: fg.withValues(alpha: 0.62),
+              ),
             ),
           ],
         ),
@@ -440,18 +442,18 @@ class _CardFront extends StatelessWidget {
           card.term,
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                color: foreground,
-                fontWeight: FontWeight.w900,
-              ),
+            color: foreground,
+            fontWeight: FontWeight.w900,
+          ),
         ),
         if (card.pronunciation != null) ...[
           const SizedBox(height: 8),
           Text(
             '/${card.pronunciation}/',
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: foreground.withValues(alpha: 0.72),
-                  fontStyle: FontStyle.italic,
-                ),
+              color: foreground.withValues(alpha: 0.72),
+              fontStyle: FontStyle.italic,
+            ),
           ),
         ],
       ],
@@ -478,18 +480,18 @@ class _CardBack extends StatelessWidget {
             card.meaning!,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: foreground,
-                  fontWeight: FontWeight.w800,
-                ),
+              color: foreground,
+              fontWeight: FontWeight.w800,
+            ),
           )
         else
           Text(
             card.term,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: foreground,
-                  fontWeight: FontWeight.w800,
-                ),
+              color: foreground,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         if (hasExample) ...[
           const SizedBox(height: 16),
@@ -497,9 +499,9 @@ class _CardBack extends StatelessWidget {
             '“${card.example!}”',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: foreground.withValues(alpha: 0.86),
-                  fontStyle: FontStyle.italic,
-                ),
+              color: foreground.withValues(alpha: 0.86),
+              fontStyle: FontStyle.italic,
+            ),
           ),
         ],
         if (hasNote) ...[
@@ -508,8 +510,8 @@ class _CardBack extends StatelessWidget {
             card.note!,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: foreground.withValues(alpha: 0.86),
-                ),
+              color: foreground.withValues(alpha: 0.86),
+            ),
           ),
         ],
         if (!hasMeaning && !hasExample && !hasNote)
@@ -517,8 +519,8 @@ class _CardBack extends StatelessWidget {
             'Sin definición todavía. Edita la palabra para agregarla.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: foreground.withValues(alpha: 0.7),
-                ),
+              color: foreground.withValues(alpha: 0.7),
+            ),
           ),
       ],
     );
@@ -551,10 +553,9 @@ class _FlashcardsResult extends StatelessWidget {
         const SizedBox(height: 16),
         Text(
           'Sesión completa',
-          style: Theme.of(context)
-              .textTheme
-              .headlineSmall
-              ?.copyWith(fontWeight: FontWeight.w900),
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 8),
         Text('Dominadas $known · Para repasar $review'),

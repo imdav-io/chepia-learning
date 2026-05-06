@@ -12,6 +12,7 @@ import '../../../vocabulary/domain/entities/vocabulary_term.dart';
 import '../../../vocabulary/presentation/controllers/vocabulary_providers.dart';
 import '../../../../shared/services/cache_providers.dart';
 import '../widgets/audio_player_bar.dart';
+import '../widgets/content_loading_view.dart';
 import '../widgets/lesson_list_panel.dart';
 import '../widgets/lesson_page_image_reader.dart';
 import '../widgets/lesson_pdf_reader.dart';
@@ -561,8 +562,7 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
     final isWide = MediaQuery.of(context).size.width >= _kSidebarBreakpoint;
 
     return dataAsync.when(
-      loading: () =>
-          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      loading: () => const ContentLoadingScaffold(),
       error: (e, _) => Scaffold(
         appBar: AppBar(),
         body: Center(
@@ -582,7 +582,9 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
           if (progressAsync.isLoading && progressAsync.valueOrNull == null) {
             return Scaffold(
               appBar: AppBar(title: Text(data.bookTitle)),
-              body: const Center(child: CircularProgressIndicator()),
+              body: const ContentLoadingView(
+                status: 'Sincronizando tu avance...',
+              ),
             );
           }
           _restoreInitialSelection(data.lessons, progressAsync.valueOrNull);
@@ -769,8 +771,7 @@ class _MainBookReader extends ConsumerWidget {
     }
     if (data.isOptimized) {
       return _ManifestErrorView(
-        message:
-            'No se pudieron cargar las páginas optimizadas de este libro.',
+        message: 'No se pudieron cargar las páginas optimizadas de este libro.',
         onRetry: () => ref.invalidate(bookReaderDataProvider(data.bookSlug)),
       );
     }
@@ -801,8 +802,7 @@ class _StudyGuideReader extends ConsumerWidget {
     }
     if (data.isOptimized && data.studyGuideKey != null) {
       return _ManifestErrorView(
-        message:
-            'No se pudieron cargar las páginas del study guide.',
+        message: 'No se pudieron cargar las páginas del study guide.',
         onRetry: () => ref.invalidate(bookReaderDataProvider(data.bookSlug)),
       );
     }
@@ -867,13 +867,13 @@ class _StudyFlowStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Material(
-      color: colors.surface,
+      color: colors.surfaceContainerHigh,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
         decoration: BoxDecoration(
           border: Border(
-            bottom: BorderSide(color: Theme.of(context).dividerColor),
+            bottom: BorderSide(color: colors.primary.withValues(alpha: 0.16)),
           ),
         ),
         child: Wrap(
@@ -1028,7 +1028,9 @@ class _FlowStepChip extends StatelessWidget {
         : colors.onSurfaceVariant.withValues(alpha: 0.58);
     final background = isDone
         ? colors.primaryContainer
-        : colors.surfaceContainerHighest.withValues(alpha: enabled ? 1 : 0.56);
+        : colors.surfaceContainerHighest.withValues(
+            alpha: enabled ? 0.9 : 0.56,
+          );
 
     return ActionChip(
       avatar: Icon(isDone ? Icons.check_circle : icon, size: 18),
@@ -1039,8 +1041,8 @@ class _FlowStepChip extends StatelessWidget {
       labelStyle: TextStyle(color: foreground, fontWeight: FontWeight.w700),
       side: BorderSide(
         color: isDone
-            ? colors.primary.withValues(alpha: 0.28)
-            : Colors.transparent,
+            ? colors.primary.withValues(alpha: 0.34)
+            : colors.outlineVariant,
       ),
       visualDensity: VisualDensity.compact,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,

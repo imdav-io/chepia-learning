@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../l10n/generated/app_localizations.dart';
+import '../../../lesson/presentation/widgets/content_loading_view.dart';
 import '../controllers/progress_providers.dart';
 
 class ProgressScreen extends ConsumerWidget {
@@ -16,7 +17,8 @@ class ProgressScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: Text(t.progressTitle)),
       body: progressAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () =>
+            const ContentLoadingView(status: 'Calculando tu progreso...'),
         error: (e, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -143,8 +145,24 @@ class _ProgressHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: colors.primaryContainer,
-        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            colors.primary.withValues(alpha: 0.24),
+            colors.surfaceContainerHigh,
+            colors.tertiary.withValues(alpha: 0.18),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colors.primary.withValues(alpha: 0.24)),
+        boxShadow: [
+          BoxShadow(
+            color: colors.primary.withValues(alpha: 0.12),
+            blurRadius: 26,
+            offset: const Offset(0, 16),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,47 +254,65 @@ class _NextActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colors.secondaryContainer,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.auto_awesome_outlined, color: colors.onSecondaryContainer),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  book.nextStepLabel ?? 'Continuar',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: colors.onSecondaryContainer,
-                    fontWeight: FontWeight.w800,
-                  ),
+    final openButton = FilledButton.tonalIcon(
+      onPressed: () => context.push('/book/${book.bookSlug}'),
+      icon: const Icon(Icons.play_arrow),
+      label: const Text('Abrir'),
+    );
+    final copy = Row(
+      children: [
+        Icon(Icons.auto_awesome_outlined, color: colors.onSecondaryContainer),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                book.nextStepLabel ?? 'Continuar',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: colors.onSecondaryContainer,
+                  fontWeight: FontWeight.w800,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'Lesson ${book.nextLessonNumber}: ${book.nextLessonTitle}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colors.onSecondaryContainer,
-                  ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Lesson ${book.nextLessonNumber}: ${book.nextLessonTitle}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: colors.onSecondaryContainer,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          FilledButton.tonalIcon(
-            onPressed: () => context.push('/book/${book.bookSlug}'),
-            icon: const Icon(Icons.play_arrow),
-            label: const Text('Abrir'),
+        ),
+      ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 520;
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: colors.secondaryContainer.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: colors.secondary.withValues(alpha: 0.28)),
           ),
-        ],
-      ),
+          child: isCompact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [copy, const SizedBox(height: 12), openButton],
+                )
+              : Row(
+                  children: [
+                    Expanded(child: copy),
+                    const SizedBox(width: 12),
+                    openButton,
+                  ],
+                ),
+        );
+      },
     );
   }
 }
@@ -294,10 +330,9 @@ class _BookProgressCard extends StatelessWidget {
         : 'Lesson ${book.lastLessonNumber}: ${book.lastLessonTitle}';
 
     return Card(
-      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: colors.primary.withValues(alpha: 0.16)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -332,11 +367,10 @@ class _BookProgressCard extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             LinearProgressIndicator(
-              value: (book.completionRatio.isFinite
-                      ? book.completionRatio
-                      : 0.0)
-                  .clamp(0, 1)
-                  .toDouble(),
+              value:
+                  (book.completionRatio.isFinite ? book.completionRatio : 0.0)
+                      .clamp(0, 1)
+                      .toDouble(),
               minHeight: 7,
               borderRadius: BorderRadius.circular(99),
             ),
@@ -397,8 +431,11 @@ class _BookProgressCard extends StatelessWidget {
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  color: colors.primaryContainer.withValues(alpha: 0.62),
+                  color: colors.primaryContainer.withValues(alpha: 0.72),
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: colors.primary.withValues(alpha: 0.18),
+                  ),
                 ),
                 child: Row(
                   children: [
@@ -447,8 +484,9 @@ class _MetricPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: colors.surface.withValues(alpha: 0.72),
+        color: colors.surfaceContainerHighest.withValues(alpha: 0.74),
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.primary.withValues(alpha: 0.12)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -493,6 +531,7 @@ class _PercentBadge extends StatelessWidget {
             value: safePercent / 100,
             strokeWidth: 5,
             backgroundColor: colors.surfaceContainerHighest,
+            color: colors.primary,
           ),
           Text(
             '$safePercent%',
@@ -518,8 +557,9 @@ class _TinyStat extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest,
+        color: colors.surfaceContainerHighest.withValues(alpha: 0.86),
         borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

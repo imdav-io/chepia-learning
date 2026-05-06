@@ -18,7 +18,7 @@ class ChepiaApp extends ConsumerWidget {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
-        themeMode: ThemeMode.system,
+        themeMode: ThemeMode.dark,
         home: _SupabaseInitErrorScreen(error: supabaseInitError!),
       );
     }
@@ -28,7 +28,7 @@ class ChepiaApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.dark,
       routerConfig: router,
       localizationsDelegates: const [
         AppLocalizations.delegate,
@@ -75,8 +75,8 @@ class _SupabaseInitErrorScreen extends StatelessWidget {
                   error.toString(),
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
+                    color: Theme.of(context).colorScheme.error,
+                  ),
                 ),
               ],
             ),
