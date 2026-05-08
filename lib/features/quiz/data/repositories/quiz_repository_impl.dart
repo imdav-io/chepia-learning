@@ -30,8 +30,7 @@ class SupabaseQuizRepository implements QuizRepository {
 
       final questionRows = await _client
           .from('questions')
-          .select(
-              'id, prompt, kind, audio_asset_id, explanation, sort_order')
+          .select('id, prompt, kind, audio_asset_id, explanation, sort_order')
           .eq('quiz_id', quizId)
           .order('sort_order');
 
@@ -63,8 +62,8 @@ class SupabaseQuizRepository implements QuizRepository {
 
       final questions = questionRows.cast<Map<String, dynamic>>().map((m) {
         final id = m['id'] as String;
-        final opts = (optionsByQ[id] ?? const <QuizOption>[])..sort(
-            (a, b) => a.sortOrder.compareTo(b.sortOrder));
+        final opts = (optionsByQ[id] ?? const <QuizOption>[])
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
         return QuizQuestion(
           id: id,
           prompt: m['prompt'] as String,
@@ -140,12 +139,15 @@ class SupabaseQuizRepository implements QuizRepository {
     try {
       final percentage = total == 0 ? 0 : ((score * 100) ~/ total);
       final passed = percentage >= passingScore;
-      await _client.from('quiz_attempts').update({
-        'score': score,
-        'total': total,
-        'passed': passed,
-        'finished_at': DateTime.now().toUtc().toIso8601String(),
-      }).eq('id', attemptId);
+      await _client
+          .from('quiz_attempts')
+          .update({
+            'score': score,
+            'total': total,
+            'passed': passed,
+            'finished_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', attemptId);
       return QuizAttemptResult(
         attemptId: attemptId,
         score: score,

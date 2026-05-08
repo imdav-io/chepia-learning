@@ -69,6 +69,8 @@ app.*.map.json
 /scripts/quiz_generator/.env
 /scripts/quiz_generator/.env.*
 !/scripts/quiz_generator/.env.example
+/supabase/.temp/
+/scripts/quiz_generator/supabase/.temp/
 
 # Node/script generated files
 /package-lock.json

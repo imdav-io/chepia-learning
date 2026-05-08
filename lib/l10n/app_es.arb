@@ -25,16 +25,8 @@
   "onboardingBody3": "Continúa donde te quedaste, en cualquier dispositivo.",
 
   "authSignInTitle": "Inicia sesión",
-  "authSignUpTitle": "Crea tu cuenta",
-  "authEmail": "Correo electrónico",
-  "authPassword": "Contraseña",
-  "authForgot": "¿Olvidaste tu contraseña?",
-  "authSignIn": "Iniciar sesión",
-  "authSignUp": "Registrarme",
   "authContinueWithGoogle": "Continuar con Google",
-  "authContinueWithApple": "Continuar con Apple",
-  "authNoAccount": "¿No tienes cuenta? Regístrate",
-  "authHasAccount": "¿Ya tienes cuenta? Inicia sesión",
+  "authProviderOnlyMessage": "Usa tu cuenta de Gmail para guardar tu progreso.",
 
   "catalogTitle": "Niveles",
   "levelBeginner": "Básico",

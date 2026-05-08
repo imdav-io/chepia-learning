@@ -11,12 +11,17 @@ final quizRepositoryProvider = Provider<QuizRepository>((ref) {
 });
 
 final lessonQuizProvider =
-    FutureProvider.family<Quiz?, ({String bookSlug, int lessonNumber})>(
-        (ref, params) async {
-  final lookup = await ref.watch(
-    lessonByBookSlugAndNumberProvider(
-      (bookSlug: params.bookSlug, lessonNumber: params.lessonNumber),
-    ).future,
-  );
-  return ref.watch(quizRepositoryProvider).fetchLessonQuiz(lookup.lesson.id);
-});
+    FutureProvider.family<Quiz?, ({String bookSlug, int lessonNumber})>((
+      ref,
+      params,
+    ) async {
+      final lookup = await ref.watch(
+        lessonByBookSlugAndNumberProvider((
+          bookSlug: params.bookSlug,
+          lessonNumber: params.lessonNumber,
+        )).future,
+      );
+      return ref
+          .watch(quizRepositoryProvider)
+          .fetchLessonQuiz(lookup.lesson.id);
+    });

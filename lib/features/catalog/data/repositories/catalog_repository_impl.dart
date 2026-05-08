@@ -134,4 +134,30 @@ class SupabaseCatalogRepository implements CatalogRepository {
       throw ServerFailure('No se pudo obtener el audio', cause: e);
     }
   }
+
+  @override
+  Future<Map<String, Asset>> fetchLessonAudios(List<String> lessonIds) async {
+    if (lessonIds.isEmpty) return const {};
+    try {
+      final res = await _client
+          .from('assets')
+          .select(
+            'id, kind, storage_path, lesson_id, book_id, mime_type, size_bytes, duration_sec, pages, version',
+          )
+          .eq('kind', 'audio')
+          .inFilter('lesson_id', lessonIds)
+          .order('version', ascending: false);
+      final latestByLesson = <String, Asset>{};
+      for (final row in (res as List).cast<Map<String, dynamic>>()) {
+        final asset = Asset.fromMap(row);
+        final lessonId = asset.lessonId;
+        if (lessonId == null) continue;
+        latestByLesson.putIfAbsent(lessonId, () => asset);
+      }
+      return latestByLesson;
+    } catch (e, st) {
+      AppLogger.error('fetchLessonAudios failed', e, st);
+      throw ServerFailure('No se pudieron obtener los audios', cause: e);
+    }
+  }
 }

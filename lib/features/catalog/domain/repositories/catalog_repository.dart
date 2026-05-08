@@ -10,4 +10,5 @@ abstract class CatalogRepository {
   Future<Asset?> fetchBookPdf(String bookId);
   Future<Asset?> fetchBookStudyGuide(String bookId);
   Future<Asset?> fetchLessonAudio(String lessonId);
+  Future<Map<String, Asset>> fetchLessonAudios(List<String> lessonIds);
 }

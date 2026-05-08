@@ -11,14 +11,14 @@ import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 
 const {
-  GEMINI_API_KEY,
-  GEMINI_MODEL = 'gemini-2.5-flash',
+  OPENAI_API_KEY,
+  OPENAI_MODEL = 'gpt-5-mini',
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
 } = process.env;
 
-if (!GEMINI_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('Faltan GEMINI_API_KEY, SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en .env');
+if (!OPENAI_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('Faltan OPENAI_API_KEY, SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en .env');
   process.exit(1);
 }
 
@@ -37,8 +37,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 const DEFAULT_BOOK_SLUGS = ['as-it-is-book-1', 'as-it-is-book-2', 'as-it-is-book-3'];
-const RPM = 15;
-const SLEEP_MS = Math.ceil(60_000 / RPM);
+const SLEEP_MS = Number.parseInt(process.env.OPENAI_REQUEST_DELAY_MS ?? '1500', 10);
 const MAX_ATTEMPTS = Number.parseInt(process.env.REWRITE_EXPLANATIONS_MAX_ATTEMPTS ?? '3', 10);
 
 const EXPLANATION_META_PATTERNS = [
@@ -59,6 +58,22 @@ function extractJson(text) {
   const cleaned = text.replace(/```json\s*|```/g, '').trim();
   const match = cleaned.match(/\{[\s\S]*\}/);
   return JSON.parse(match ? match[0] : cleaned);
+}
+
+function extractOpenAIText(data) {
+  if (typeof data.output_text === 'string') return data.output_text;
+  const chunks = [];
+  for (const item of data.output ?? []) {
+    for (const part of item.content ?? []) {
+      if (part.type === 'output_text' && typeof part.text === 'string') {
+        chunks.push(part.text);
+      }
+      if (part.type === 'text' && typeof part.text === 'string') {
+        chunks.push(part.text);
+      }
+    }
+  }
+  return chunks.join('\n').trim();
 }
 
 function cleanExplanation(value) {
@@ -125,34 +140,34 @@ function promptForQuiz({ bookSlug, lessonNumber, questions }) {
       .map((option) => option.text),
   }));
 
-  return `Reescribe SOLO las explicaciones de estas preguntas de ingles.
+  return `Rewrite ONLY the explanations for these English questions.
 
-Referencia interna para orden:
-- Libro: ${bookSlug}
-- Leccion: ${lessonNumber}
+Internal ordering reference:
+- Book: ${bookSlug}
+- Lesson: ${lessonNumber}
 
-Reglas obligatorias:
-- Devuelve una explicacion en espanol por cada question_id.
-- La explicacion debe explicar POR QUE la opcion correcta es correcta.
-- NO expliques que evalua la pregunta.
-- NO uses frases como "esta pregunta evalua", "evalua el uso correcto de", "sirve para practicar", "mide la comprension", "segun el vocabulario", "segun la leccion", "segun el contexto", "como se presenta", "como se vio", "en la pagina", "en el libro", "en el texto" o similares.
-- Si necesitas hablar del contexto, usa "en esta situacion" o "en el dialogo", nunca "en la leccion" ni "segun el material".
-- Si es vocabulario, explica significado o matiz de la palabra correcta.
-- Si es gramatica, explica la regla concreta.
-- Si es comprension, explica la logica de la situacion o dialogo.
-- Manten 1 o 2 oraciones breves.
-- No cambies preguntas, opciones ni ids.
-- Responde usando el campo "number" de cada pregunta. No copies ni inventes UUIDs.
+Mandatory rules:
+- Return one Spanish explanation for each question_id.
+- The explanation must explain WHY the correct option is correct.
+- Do NOT explain what the question evaluates.
+- Do NOT use phrases such as "esta pregunta evalua", "evalua el uso correcto de", "sirve para practicar", "mide la comprension", "segun el vocabulario", "segun la leccion", "segun el contexto", "como se presenta", "como se vio", "en la pagina", "en el libro", "en el texto", or similar phrases.
+- If you need to mention context, use "en esta situacion" or "en el dialogo"; never use "en la leccion" or "segun el material".
+- If it is vocabulary, explain the meaning or nuance of the correct word.
+- If it is grammar, explain the concrete rule.
+- If it is comprehension, explain the logic of the situation or dialogue.
+- Keep 1 or 2 short sentences.
+- Do not change questions, options, or ids.
+- Respond using each question's "number" field. Do not copy or invent UUIDs.
 
-Ejemplos buenos:
+Good examples:
 - "La respuesta correcta es 'peaches' porque las palabras terminadas en -ch forman el plural con -es."
 - "'Does' se usa con he/she/it en preguntas del present simple; por eso 'Does she...?' es correcto."
 - "'Tired' significa cansado; las otras opciones hablan de hambre, frio o tristeza."
 
-Preguntas:
+Questions:
 ${JSON.stringify(payload, null, 2)}
 
-Responde SOLO JSON:
+Return ONLY JSON:
 {
   "explanations": [
     { "number": 1, "explanation": "explicacion en espanol" }
@@ -164,37 +179,29 @@ async function rewriteQuiz(quiz) {
   let lastError;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [
-              {
-                text: 'Eres un teacher experto de ingles para hispanohablantes. Reescribes feedback breve, util y concreto. Respondes siempre JSON valido sin texto extra.',
-              },
-            ],
-          },
-          contents: [{ role: 'user', parts: [{ text: promptForQuiz(quiz) }] }],
-          generationConfig: {
-            temperature: 0.45,
-            maxOutputTokens: 8192,
-            responseMimeType: 'application/json',
-          },
-        }),
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
       },
-    );
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        instructions:
+          'You are an expert English teacher for Spanish-speaking learners. You rewrite brief, useful, concrete feedback. Always return valid JSON with no extra text.',
+        input: [{ role: 'user', content: [{ type: 'input_text', text: promptForQuiz(quiz) }] }],
+        max_output_tokens: 8192,
+      }),
+    });
 
     if (!response.ok) {
-      throw new Error(`Gemini ${response.status}: ${(await response.text()).slice(0, 400)}`);
+      throw new Error(`OpenAI ${response.status}: ${(await response.text()).slice(0, 500)}`);
     }
 
     const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = extractOpenAIText(data);
     if (!text) {
-      throw new Error(`Gemini sin texto: ${JSON.stringify(data).slice(0, 300)}`);
+      throw new Error(`OpenAI sin texto: ${JSON.stringify(data).slice(0, 300)}`);
     }
 
     try {

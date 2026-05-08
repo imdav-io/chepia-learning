@@ -16,6 +16,7 @@ import 'dotenv/config';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
+import sharp from 'sharp';
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -49,27 +50,21 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-function jpegSize(buf) {
-  let i = 2;
-  while (i < buf.length) {
-    if (buf[i] !== 0xff) break;
-    const marker = buf[i + 1];
-    const len = buf.readUInt16BE(i + 2);
-    if (
-      (marker >= 0xc0 && marker <= 0xc3) ||
-      (marker >= 0xc5 && marker <= 0xc7) ||
-      (marker >= 0xc9 && marker <= 0xcb) ||
-      (marker >= 0xcd && marker <= 0xcf)
-    ) {
-      return {
-        height: buf.readUInt16BE(i + 5),
-        width: buf.readUInt16BE(i + 7),
-      };
-    }
-    i += 2 + len;
+async function imageDimensions(buffer) {
+  try {
+    const meta = await sharp(buffer).metadata();
+    return { width: meta.width ?? 0, height: meta.height ?? 0 };
+  } catch {
+    return { width: 0, height: 0 };
   }
-  return { width: 0, height: 0 };
 }
+
+const MIME_BY_EXT = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.png': 'image/png',
+};
 
 async function upload(remotePath, buffer, contentType) {
   let lastError;
@@ -89,27 +84,46 @@ async function upload(remotePath, buffer, contentType) {
 async function main() {
   const entries = await fs.readdir(PAGES_DIR);
   const pageFiles = entries
-    .filter((f) => /^page-\d+\.jpg$/i.test(f))
-    .map((file) => ({
-      file,
-      number: Number.parseInt(file.match(/^page-(\d+)\.jpg$/i)[1], 10),
-    }))
+    .map((file) => {
+      const match = file.match(/^page-(\d+)\.(jpe?g|webp|png)$/i);
+      if (!match) return null;
+      return {
+        file,
+        number: Number.parseInt(match[1], 10),
+        ext: `.${match[2].toLowerCase()}`,
+      };
+    })
+    .filter(Boolean)
     .sort((a, b) => a.number - b.number);
 
   if (pageFiles.length === 0) {
-    throw new Error(`No encontré páginas en ${PAGES_DIR}`);
+    throw new Error(
+      `No encontré páginas en ${PAGES_DIR} (acepto .jpg/.jpeg/.webp/.png)`,
+    );
   }
+
+  const formats = new Set(pageFiles.map((p) => p.ext.replace('.', '')));
+  if (formats.size > 1) {
+    throw new Error(
+      `Mezcla de formatos en ${PAGES_DIR}: ${[...formats].join(', ')}. ` +
+        'Convierte todo al mismo formato antes de subir.',
+    );
+  }
+  const format = pageFiles[0].ext.replace('.', '');
+  const mime = MIME_BY_EXT[pageFiles[0].ext] ?? 'application/octet-stream';
 
   const pages = [];
   let totalBytes = 0;
-  console.log(`Subiendo ${pageFiles.length} páginas de ${BOOK_SLUG}...`);
+  console.log(
+    `Subiendo ${pageFiles.length} páginas (${format}) de ${BOOK_SLUG}...`,
+  );
 
   for (const page of pageFiles) {
     const localPath = path.join(PAGES_DIR, page.file);
     const buffer = await fs.readFile(localPath);
-    const size = jpegSize(buffer);
+    const size = await imageDimensions(buffer);
     const remotePath = `${REMOTE_DIR}/${page.file}`;
-    await upload(remotePath, buffer, 'image/jpeg');
+    await upload(remotePath, buffer, mime);
     totalBytes += buffer.byteLength;
     pages.push({
       pageNumber: page.number,
@@ -117,7 +131,7 @@ async function main() {
       width: size.width,
       height: size.height,
       sizeBytes: buffer.byteLength,
-      mimeType: 'image/jpeg',
+      mimeType: mime,
     });
     if (page.number % 20 === 0 || page.number === pageFiles.length) {
       console.log(`[ok] ${page.number}/${pageFiles.length}`);
@@ -131,7 +145,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     pageCount: pages.length,
     totalBytes,
-    format: 'jpg',
+    format,
     pages,
   };
   await upload(

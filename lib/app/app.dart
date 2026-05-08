@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../shared/theme/app_theme.dart';
+import '../shared/theme/theme_providers.dart';
 import 'router.dart';
 
 class ChepiaApp extends ConsumerWidget {
@@ -23,11 +24,12 @@ class ChepiaApp extends ConsumerWidget {
       );
     }
     final router = ref.watch(goRouterProvider);
+    final theme = ref.watch(activeThemeProvider);
     return MaterialApp.router(
       title: 'Chepia Learning',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
+      theme: theme,
+      darkTheme: theme,
       themeMode: ThemeMode.dark,
       routerConfig: router,
       localizationsDelegates: const [

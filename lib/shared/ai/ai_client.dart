@@ -3,8 +3,14 @@
 /// pero quede listo para v2 (chat tutor, evaluación de pronunciación, etc.).
 abstract class AiClient {
   Future<String> chat(String prompt, {String? systemPrompt});
-  Future<PronunciationFeedback> evaluatePronunciation(String audioPath, String reference);
-  Future<String> explainAnswer({required String question, required String userAnswer});
+  Future<PronunciationFeedback> evaluatePronunciation(
+    String audioPath,
+    String reference,
+  );
+  Future<String> explainAnswer({
+    required String question,
+    required String userAnswer,
+  });
 }
 
 class PronunciationFeedback {
@@ -27,12 +33,18 @@ class NotImplementedAiClient implements AiClient {
   }
 
   @override
-  Future<PronunciationFeedback> evaluatePronunciation(String audioPath, String reference) {
+  Future<PronunciationFeedback> evaluatePronunciation(
+    String audioPath,
+    String reference,
+  ) {
     throw UnimplementedError('AiClient no configurado en MVP');
   }
 
   @override
-  Future<String> explainAnswer({required String question, required String userAnswer}) {
+  Future<String> explainAnswer({
+    required String question,
+    required String userAnswer,
+  }) {
     throw UnimplementedError('AiClient no configurado en MVP');
   }
 }

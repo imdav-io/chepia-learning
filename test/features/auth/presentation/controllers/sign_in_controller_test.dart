@@ -1,4 +1,4 @@
-import 'package:chepia_learning/features/auth/domain/entities/app_user.dart';
+import 'package:chepia_learning/core/errors/failure.dart';
 import 'package:chepia_learning/features/auth/domain/repositories/auth_repository.dart';
 import 'package:chepia_learning/features/auth/presentation/controllers/auth_providers.dart';
 import 'package:chepia_learning/features/auth/presentation/controllers/sign_in_controller.dart';
@@ -15,9 +15,7 @@ void main() {
   setUp(() {
     mockAuthRepository = MockAuthRepository();
     container = ProviderContainer(
-      overrides: [
-        authRepositoryProvider.overrideWithValue(mockAuthRepository),
-      ],
+      overrides: [authRepositoryProvider.overrideWithValue(mockAuthRepository)],
     );
   });
 
@@ -30,41 +28,34 @@ void main() {
       expect(container.read(signInControllerProvider), const SignInState());
     });
 
-    test('signIn success updates state and returns true', () async {
-      const user = AppUser(id: '123', email: 'test@example.com');
-      when(() => mockAuthRepository.signInWithEmail(
-            email: 'test@example.com',
-            password: 'password123',
-          )).thenAnswer((_) async => user);
+    test('Google sign-in success clears submitting state', () async {
+      when(
+        () => mockAuthRepository.signInWithGoogle(),
+      ).thenAnswer((_) async {});
 
       final controller = container.read(signInControllerProvider.notifier);
-      
-      final result = await controller.signIn(
-        email: 'test@example.com',
-        password: 'password123',
-      );
 
-      expect(result, isTrue);
+      await controller.signInWithGoogle();
+
+      verify(() => mockAuthRepository.signInWithGoogle()).called(1);
       expect(container.read(signInControllerProvider).isSubmitting, isFalse);
       expect(container.read(signInControllerProvider).errorMessage, isNull);
     });
 
-    test('signIn failure updates state with error message', () async {
-      when(() => mockAuthRepository.signInWithEmail(
-            email: 'test@example.com',
-            password: 'wrong-password',
-          )).thenThrow(Exception('Invalid credentials'));
+    test('Google sign-in failure updates state with error message', () async {
+      when(
+        () => mockAuthRepository.signInWithGoogle(),
+      ).thenThrow(const AuthFailure('No se pudo iniciar sesión con Google'));
 
       final controller = container.read(signInControllerProvider.notifier);
-      
-      final result = await controller.signIn(
-        email: 'test@example.com',
-        password: 'wrong-password',
-      );
 
-      expect(result, isFalse);
+      await controller.signInWithGoogle();
+
       expect(container.read(signInControllerProvider).isSubmitting, isFalse);
-      expect(container.read(signInControllerProvider).errorMessage, isNotNull);
+      expect(
+        container.read(signInControllerProvider).errorMessage,
+        'No se pudo iniciar sesión con Google',
+      );
     });
   });
 }

@@ -2,15 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
+import 'level_style.dart';
 
 class AppTheme {
   AppTheme._();
 
-  static ThemeData light() => _neonStudyTheme();
+  static ThemeData light({LevelStyle style = LevelStyle.balanced}) =>
+      _build(LevelPalette.forStyle(style));
 
-  static ThemeData dark() => _neonStudyTheme();
+  static ThemeData dark({LevelStyle style = LevelStyle.balanced}) =>
+      _build(LevelPalette.forStyle(style));
 
-  static ThemeData _neonStudyTheme() {
+  static ThemeData forStyle(LevelStyle style) =>
+      _build(LevelPalette.forStyle(style));
+
+  static ThemeData _build(LevelPalette palette) {
     final base = ThemeData.dark(useMaterial3: true);
     final textTheme = GoogleFonts.nunitoTextTheme(base.textTheme).apply(
       bodyColor: AppColors.textPrimaryDark,
@@ -19,31 +25,31 @@ class AppTheme {
 
     final colorScheme =
         ColorScheme.fromSeed(
-          seedColor: AppColors.primary,
+          seedColor: palette.primary,
           brightness: Brightness.dark,
         ).copyWith(
-          primary: AppColors.primary,
-          onPrimary: const Color(0xFF021417),
-          primaryContainer: const Color(0xFF073A47),
-          onPrimaryContainer: const Color(0xFFE5FCFF),
-          secondary: AppColors.secondary,
-          onSecondary: const Color(0xFF03160B),
-          secondaryContainer: const Color(0xFF093D25),
-          onSecondaryContainer: const Color(0xFFE2FFEF),
-          tertiary: AppColors.tertiary,
-          onTertiary: const Color(0xFF1A0620),
-          tertiaryContainer: const Color(0xFF401349),
-          onTertiaryContainer: const Color(0xFFFDE7FF),
-          surface: AppColors.surfaceDark,
-          surfaceContainerLowest: const Color(0xFF050712),
-          surfaceContainerLow: const Color(0xFF080D1A),
-          surfaceContainer: const Color(0xFF0B1020),
-          surfaceContainerHigh: const Color(0xFF10182A),
-          surfaceContainerHighest: const Color(0xFF142033),
+          primary: palette.primary,
+          onPrimary: palette.onPrimary,
+          primaryContainer: palette.primaryContainer,
+          onPrimaryContainer: palette.onPrimaryContainer,
+          secondary: palette.secondary,
+          onSecondary: palette.onSecondary,
+          secondaryContainer: palette.secondaryContainer,
+          onSecondaryContainer: palette.onSecondaryContainer,
+          tertiary: palette.tertiary,
+          onTertiary: palette.onTertiary,
+          tertiaryContainer: palette.tertiaryContainer,
+          onTertiaryContainer: palette.onTertiaryContainer,
+          surface: palette.surface,
+          surfaceContainerLowest: palette.background,
+          surfaceContainerLow: palette.surface,
+          surfaceContainer: palette.surfaceContainer,
+          surfaceContainerHigh: palette.surfaceContainerHigh,
+          surfaceContainerHighest: palette.surfaceContainerHighest,
           onSurface: AppColors.textPrimaryDark,
           onSurfaceVariant: AppColors.textSecondaryDark,
-          outline: AppColors.borderDark,
-          outlineVariant: const Color(0xFF17283A),
+          outline: palette.outline,
+          outlineVariant: palette.outlineVariant,
           error: AppColors.error,
         );
 
@@ -58,9 +64,9 @@ class AppTheme {
 
     return base.copyWith(
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: AppColors.backgroundDark,
-      canvasColor: AppColors.backgroundDark,
-      dividerColor: AppColors.borderDark,
+      scaffoldBackgroundColor: palette.background,
+      canvasColor: palette.background,
+      dividerColor: palette.outline,
       textTheme: textTheme.copyWith(
         displaySmall: titleStyle.copyWith(fontSize: 36),
         headlineMedium: titleStyle.copyWith(fontSize: 30),
@@ -78,7 +84,7 @@ class AppTheme {
         labelLarge: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: AppColors.backgroundDark,
+        backgroundColor: palette.background,
         foregroundColor: AppColors.textPrimaryDark,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -87,21 +93,21 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 76,
-        backgroundColor: AppColors.surfaceDark,
-        indicatorColor: AppColors.primary.withValues(alpha: 0.18),
-        shadowColor: AppColors.primary.withValues(alpha: 0.2),
+        backgroundColor: palette.surface,
+        indicatorColor: palette.primary.withValues(alpha: 0.18),
+        shadowColor: palette.primary.withValues(alpha: 0.2),
         surfaceTintColor: Colors.transparent,
         iconTheme: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return IconThemeData(
-            color: selected ? AppColors.primary : AppColors.textSecondaryDark,
+            color: selected ? palette.primary : AppColors.textSecondaryDark,
             size: selected ? 28 : 24,
           );
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return GoogleFonts.nunito(
-            color: selected ? AppColors.primary : AppColors.textSecondaryDark,
+            color: selected ? palette.primary : AppColors.textSecondaryDark,
             fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
             fontSize: 12,
           );
@@ -110,8 +116,8 @@ class AppTheme {
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           minimumSize: const Size(64, 52),
-          backgroundColor: AppColors.primary,
-          foregroundColor: const Color(0xFF021417),
+          backgroundColor: palette.primary,
+          foregroundColor: palette.onPrimary,
           disabledBackgroundColor: colorScheme.surfaceContainerHighest,
           disabledForegroundColor: colorScheme.onSurfaceVariant,
           elevation: 0,
@@ -124,8 +130,8 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           minimumSize: const Size(64, 52),
-          foregroundColor: AppColors.primary,
-          side: BorderSide(color: AppColors.primary.withValues(alpha: 0.5)),
+          foregroundColor: palette.primary,
+          side: BorderSide(color: palette.primary.withValues(alpha: 0.5)),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -134,7 +140,7 @@ class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: AppColors.primary,
+          foregroundColor: palette.primary,
           textStyle: GoogleFonts.nunito(fontWeight: FontWeight.w900),
         ),
       ),
@@ -142,7 +148,7 @@ class AppTheme {
         filled: true,
         fillColor: colorScheme.surfaceContainerHigh,
         labelStyle: const TextStyle(color: AppColors.textSecondaryDark),
-        prefixIconColor: AppColors.primary,
+        prefixIconColor: palette.primary,
         suffixIconColor: AppColors.textSecondaryDark,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
@@ -150,15 +156,15 @@ class AppTheme {
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.borderDark),
+          borderSide: BorderSide(color: palette.outline),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.borderDark),
+          borderSide: BorderSide(color: palette.outline),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+          borderSide: BorderSide(color: palette.primary, width: 2),
         ),
       ),
       cardTheme: CardThemeData(
@@ -167,11 +173,11 @@ class AppTheme {
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: AppColors.primary.withValues(alpha: 0.16)),
+          side: BorderSide(color: palette.primary.withValues(alpha: 0.16)),
         ),
       ),
       listTileTheme: ListTileThemeData(
-        iconColor: AppColors.primary,
+        iconColor: palette.primary,
         textColor: AppColors.textPrimaryDark,
         subtitleTextStyle: GoogleFonts.nunito(
           color: AppColors.textSecondaryDark,
@@ -181,32 +187,32 @@ class AppTheme {
       ),
       chipTheme: base.chipTheme.copyWith(
         backgroundColor: colorScheme.surfaceContainerHighest,
-        selectedColor: AppColors.primary.withValues(alpha: 0.18),
+        selectedColor: palette.primary.withValues(alpha: 0.18),
         disabledColor: colorScheme.surfaceContainerHigh,
         labelStyle: GoogleFonts.nunito(
           color: AppColors.textPrimaryDark,
           fontWeight: FontWeight.w800,
         ),
-        side: BorderSide(color: AppColors.primary.withValues(alpha: 0.18)),
+        side: BorderSide(color: palette.primary.withValues(alpha: 0.18)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
-        color: AppColors.primary,
+        color: palette.primary,
         linearTrackColor: colorScheme.surfaceContainerHighest,
         circularTrackColor: colorScheme.surfaceContainerHighest,
       ),
       sliderTheme: SliderThemeData(
-        activeTrackColor: AppColors.primary,
+        activeTrackColor: palette.primary,
         inactiveTrackColor: colorScheme.surfaceContainerHighest,
-        thumbColor: AppColors.secondary,
-        overlayColor: AppColors.primary.withValues(alpha: 0.16),
+        thumbColor: palette.secondary,
+        overlayColor: palette.primary.withValues(alpha: 0.16),
       ),
-      bottomSheetTheme: const BottomSheetThemeData(
-        backgroundColor: AppColors.surfaceDark,
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: palette.surface,
         surfaceTintColor: Colors.transparent,
-        modalBackgroundColor: AppColors.surfaceDark,
-        modalBarrierColor: Color(0xCC000000),
-        dragHandleColor: AppColors.primary,
+        modalBackgroundColor: palette.surface,
+        modalBarrierColor: const Color(0xCC000000),
+        dragHandleColor: palette.primary,
       ),
       popupMenuTheme: PopupMenuThemeData(
         color: colorScheme.surfaceContainerHigh,

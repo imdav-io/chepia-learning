@@ -7,7 +7,11 @@ import '../../domain/entities/asset.dart';
 /// Resuelve la URL final de un asset, ya sea absoluta (demo / CDN) o
 /// firmada desde Supabase Storage.
 class AssetRepository {
-  AssetRepository(this._client, {this.bucket = 'content', this.signedSeconds = 3600});
+  AssetRepository(
+    this._client, {
+    this.bucket = 'content',
+    this.signedSeconds = 3600,
+  });
 
   final SupabaseClient _client;
   final String bucket;
@@ -16,7 +20,9 @@ class AssetRepository {
   Future<String> resolveUrl(Asset asset) async {
     if (asset.isAbsoluteUrl) return asset.storagePath;
     try {
-      final url = await _client.storage.from(bucket).createSignedUrl(asset.storagePath, signedSeconds);
+      final url = await _client.storage
+          .from(bucket)
+          .createSignedUrl(asset.storagePath, signedSeconds);
       return url;
     } catch (e, st) {
       AppLogger.error('createSignedUrl failed for ${asset.storagePath}', e, st);

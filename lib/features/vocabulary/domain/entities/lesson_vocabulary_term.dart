@@ -12,6 +12,9 @@ class LessonVocabularyTerm extends Equatable {
     required this.sortOrder,
     this.exampleEn,
     this.pronunciation,
+    this.imageUrl,
+    this.imageAlt,
+    this.audioStoragePath,
   });
 
   final String id;
@@ -20,6 +23,9 @@ class LessonVocabularyTerm extends Equatable {
   final String meaningEs;
   final String? exampleEn;
   final String? pronunciation;
+  final String? imageUrl;
+  final String? imageAlt;
+  final String? audioStoragePath;
   final int sortOrder;
 
   factory LessonVocabularyTerm.fromMap(Map<String, dynamic> map) {
@@ -30,6 +36,9 @@ class LessonVocabularyTerm extends Equatable {
       meaningEs: map['meaning_es'] as String,
       exampleEn: map['example_en'] as String?,
       pronunciation: map['pronunciation'] as String?,
+      imageUrl: map['image_url'] as String?,
+      imageAlt: map['image_alt'] as String?,
+      audioStoragePath: map['audio_storage_path'] as String?,
       sortOrder: (map['sort_order'] as num?)?.toInt() ?? 0,
     );
   }
@@ -42,6 +51,9 @@ class LessonVocabularyTerm extends Equatable {
     meaningEs,
     exampleEn,
     pronunciation,
+    imageUrl,
+    imageAlt,
+    audioStoragePath,
     sortOrder,
   ];
 }

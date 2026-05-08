@@ -31,11 +31,11 @@ class QuizOption extends Equatable {
   final int sortOrder;
 
   factory QuizOption.fromMap(Map<String, dynamic> m) => QuizOption(
-        id: m['id'] as String,
-        text: m['text'] as String,
-        isCorrect: (m['is_correct'] as bool?) ?? false,
-        sortOrder: (m['sort_order'] as num?)?.toInt() ?? 0,
-      );
+    id: m['id'] as String,
+    text: m['text'] as String,
+    isCorrect: (m['is_correct'] as bool?) ?? false,
+    sortOrder: (m['sort_order'] as num?)?.toInt() ?? 0,
+  );
 
   @override
   List<Object?> get props => [id, text, isCorrect, sortOrder];
@@ -68,8 +68,14 @@ class QuizQuestion extends Equatable {
   }
 
   @override
-  List<Object?> get props =>
-      [id, prompt, kind, options, explanation, sortOrder];
+  List<Object?> get props => [
+    id,
+    prompt,
+    kind,
+    options,
+    explanation,
+    sortOrder,
+  ];
 }
 
 class Quiz extends Equatable {

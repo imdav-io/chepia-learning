@@ -18,6 +18,7 @@ class Asset extends Equatable {
 
   final String id;
   final AssetKind kind;
+
   /// Puede ser una URL absoluta (demo / CDN externo) o un path dentro del
   /// bucket "content" de Supabase Storage.
   final String storagePath;
@@ -46,19 +47,18 @@ class Asset extends Equatable {
   }
 
   factory Asset.fromMap(Map<String, dynamic> m) => Asset(
-        id: m['id'] as String,
-        kind: _parseKind(m['kind'] as String),
-        storagePath: m['storage_path'] as String,
-        lessonId: m['lesson_id'] as String?,
-        bookId: m['book_id'] as String?,
-        mimeType: m['mime_type'] as String?,
-        sizeBytes: (m['size_bytes'] as num?)?.toInt(),
-        durationSec: (m['duration_sec'] as num?)?.toInt(),
-        pages: (m['pages'] as num?)?.toInt(),
-        version: (m['version'] as num?)?.toInt() ?? 1,
-      );
+    id: m['id'] as String,
+    kind: _parseKind(m['kind'] as String),
+    storagePath: m['storage_path'] as String,
+    lessonId: m['lesson_id'] as String?,
+    bookId: m['book_id'] as String?,
+    mimeType: m['mime_type'] as String?,
+    sizeBytes: (m['size_bytes'] as num?)?.toInt(),
+    durationSec: (m['duration_sec'] as num?)?.toInt(),
+    pages: (m['pages'] as num?)?.toInt(),
+    version: (m['version'] as num?)?.toInt() ?? 1,
+  );
 
   @override
-  List<Object?> get props =>
-      [id, kind, storagePath, lessonId, bookId, version];
+  List<Object?> get props => [id, kind, storagePath, lessonId, bookId, version];
 }

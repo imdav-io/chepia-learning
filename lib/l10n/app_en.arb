@@ -25,16 +25,8 @@
   "onboardingBody3": "Pick up where you left off, on any device.",
 
   "authSignInTitle": "Sign in",
-  "authSignUpTitle": "Create your account",
-  "authEmail": "Email",
-  "authPassword": "Password",
-  "authForgot": "Forgot your password?",
-  "authSignIn": "Sign in",
-  "authSignUp": "Sign up",
   "authContinueWithGoogle": "Continue with Google",
-  "authContinueWithApple": "Continue with Apple",
-  "authNoAccount": "Don't have an account? Sign up",
-  "authHasAccount": "Already have an account? Sign in",
+  "authProviderOnlyMessage": "Use your Gmail account to save your progress.",
 
   "catalogTitle": "Levels",
   "levelBeginner": "Beginner",

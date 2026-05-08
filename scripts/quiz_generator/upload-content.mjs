@@ -115,13 +115,32 @@ async function main() {
       }
     }
 
-    const audioDir = path.join(CONTENT_DIR, book.folder, book.audioDir);
+    // Prefiere la carpeta optimizada (mp3-optimized) si existe; permite que
+    // scripts/optimize-audio.sh trabaje sin tocar los originales.
+    const audioCandidates = [
+      path.join(CONTENT_DIR, book.folder, `${book.audioDir}-optimized`),
+      path.join(CONTENT_DIR, book.folder, book.audioDir),
+    ];
+    let audioDir;
     let entries;
-    try {
-      entries = await fs.readdir(audioDir);
-    } catch (e) {
-      console.warn(`[warn] sin carpeta de audio (${audioDir}). Convierte WMA a MP3 primero.`);
+    for (const candidate of audioCandidates) {
+      try {
+        entries = await fs.readdir(candidate);
+        audioDir = candidate;
+        break;
+      } catch (_) {
+        // probar siguiente
+      }
+    }
+    if (!audioDir) {
+      console.warn(
+        `[warn] sin carpeta de audio en ${audioCandidates.join(' o ')}. ` +
+          'Convierte WMA a MP3 primero o corre optimize-audio.sh.',
+      );
       continue;
+    }
+    if (audioDir.endsWith('-optimized')) {
+      console.log(`[info] usando audios optimizados de ${audioDir}`);
     }
     const mp3s = entries.filter((f) => f.toLowerCase().endsWith('.mp3'));
     for (const f of mp3s) {

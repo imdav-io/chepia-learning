@@ -92,7 +92,10 @@ class SupabaseProgressRepository implements ProgressRepository {
   }
 
   Future<List<String>> _lessonIdsForBook(String bookId) async {
-    final res = await _client.from('lessons').select('id').eq('book_id', bookId);
+    final res = await _client
+        .from('lessons')
+        .select('id')
+        .eq('book_id', bookId);
     return (res as List).map((m) => (m as Map)['id'] as String).toList();
   }
 

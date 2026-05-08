@@ -57,12 +57,16 @@ dependencies:
 
   # Auth helpers
   google_sign_in: ^6.2.2
-  sign_in_with_apple: ^6.1.4
 
   # UI
   flutter_svg: ^2.0.16
   cached_network_image: ^3.4.1
   shimmer: ^3.0.0
+
+  # Speech (TTS + recognition)
+  flutter_tts: ^4.2.0
+  speech_to_text: ^7.0.0
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:

@@ -11,7 +11,10 @@ import '../../../progress/presentation/controllers/progress_providers.dart';
 import '../../../vocabulary/domain/entities/vocabulary_term.dart';
 import '../../../vocabulary/presentation/controllers/vocabulary_providers.dart';
 import '../../../../shared/services/cache_providers.dart';
+import '../../../../shared/widgets/app_state_views.dart';
+import '../controllers/book_prefetch_controller.dart';
 import '../widgets/audio_player_bar.dart';
+import '../widgets/book_prefetch_banner.dart';
 import '../widgets/content_loading_view.dart';
 import '../widgets/lesson_list_panel.dart';
 import '../widgets/lesson_page_image_reader.dart';
@@ -30,6 +33,7 @@ class BookReaderScreen extends ConsumerStatefulWidget {
 
 class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  final _audioBarKey = GlobalKey<AudioPlayerBarState>();
   final _vocabularyController = TextEditingController();
   LessonWithAudio? _selected;
   int? _initialPdfPage;
@@ -55,8 +59,31 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
     context.push('/flashcards/${widget.bookSlug}/${l.lesson.number}');
   }
 
+  Future<void> _closeReader() async {
+    await _audioBarKey.currentState?.pauseAndPersist();
+    if (mounted) context.pop();
+  }
+
+  void _maybeStartPrefetch(BookReaderData data) {
+    // Diferimos al siguiente frame: no podemos arrancar trabajo durante build.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final assets = await buildBookOfflineAssets(
+        data: data,
+        loadLazyPdf: (bookId) => ref.read(lazyBookPdfProvider(bookId).future),
+      );
+      if (!mounted) return;
+      await ref
+          .read(bookPrefetchControllerProvider(widget.bookSlug).notifier)
+          .ensureRunning(bookSlug: widget.bookSlug, assets: assets);
+    });
+  }
+
   Future<void> _showOfflineSheet(BookReaderData data) async {
-    final assets = await _offlineAssetsFor(data);
+    final assets = await buildBookOfflineAssets(
+      data: data,
+      loadLazyPdf: (bookId) => ref.read(lazyBookPdfProvider(bookId).future),
+    );
     if (!mounted) return;
     var downloading = false;
     var downloaded = 0;
@@ -189,52 +216,7 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
     );
   }
 
-  Future<List<_OfflineAsset>> _offlineAssetsFor(BookReaderData data) async {
-    final assets = <_OfflineAsset>[];
-
-    String? pdfKey = data.pdfKey;
-    String? pdfUrl = data.pdfUrl;
-    if (data.isOptimized && (pdfKey == null || pdfUrl == null)) {
-      final lazy = await ref.read(lazyBookPdfProvider(data.bookId).future);
-      pdfKey = lazy?.key;
-      pdfUrl = lazy?.url;
-    }
-    if (pdfKey != null && pdfUrl != null) {
-      assets.add(
-        _OfflineAsset(
-          label: 'PDF principal',
-          key: pdfKey,
-          url: pdfUrl,
-          kind: 'pdf',
-        ),
-      );
-    }
-    if (data.studyGuideUrl != null && data.studyGuideKey != null) {
-      assets.add(
-        _OfflineAsset(
-          label: 'Study guide',
-          key: data.studyGuideKey!,
-          url: data.studyGuideUrl!,
-          kind: 'pdf',
-        ),
-      );
-    }
-    for (final lesson in data.lessons) {
-      final audio = lesson.audio;
-      if (audio == null || lesson.audioUrl == null) continue;
-      assets.add(
-        _OfflineAsset(
-          label: 'Audio L${lesson.lesson.number}',
-          key: audio.storagePath,
-          url: lesson.audioUrl!,
-          kind: 'audio',
-        ),
-      );
-    }
-    return assets;
-  }
-
-  Future<List<bool>> _offlineStatuses(List<_OfflineAsset> assets) async {
+  Future<List<bool>> _offlineStatuses(List<BookOfflineAsset> assets) async {
     final cache = ref.read(assetCacheProvider);
     final result = <bool>[];
     for (final asset in assets) {
@@ -565,17 +547,21 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
       loading: () => const ContentLoadingScaffold(),
       error: (e, _) => Scaffold(
         appBar: AppBar(),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(e.toString(), textAlign: TextAlign.center),
-          ),
+        body: AppErrorView(
+          title: 'No se pudo abrir el libro',
+          message:
+              'Revisa conexión, permisos de Storage o que el libro tenga assets cargados. Detalle: $e',
+          onRetry: () =>
+              ref.invalidate(bookReaderDataProvider(widget.bookSlug)),
         ),
       ),
       data: (data) {
         _bookId = data.bookId;
         _lessons = data.lessons;
         final progressAsync = ref.watch(bookProgressProvider(data.bookId));
+        // Dispara la descarga automática en background al primer ingreso.
+        // Es no-bloqueante: el usuario puede leer y escuchar mientras baja.
+        _maybeStartPrefetch(data);
 
         // Auto-seleccionar la última lección leída la primera vez.
         if (_selected == null && data.lessons.isNotEmpty) {
@@ -634,111 +620,133 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
           ),
         );
 
-        return Scaffold(
-          key: _scaffoldKey,
-          appBar: AppBar(
-            title: Text(data.bookTitle),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.download_for_offline_outlined),
-                tooltip: 'Modo offline',
-                onPressed: () => _showOfflineSheet(data),
-              ),
-            ],
-            leading: isWide
-                ? IconButton(
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: () => context.pop(),
-                  )
-                : null,
-          ),
-          drawer: isWide ? null : Drawer(child: SafeArea(child: panel)),
-          body: Row(
-            children: [
-              if (isWide) ...[
-                SizedBox(
-                  width: _kSidebarWidth,
-                  child: Material(elevation: 1, child: panel),
+        return PopScope(
+          onPopInvokedWithResult: (_, _) {
+            unawaited(
+              _audioBarKey.currentState?.pauseAndPersist() ?? Future.value(),
+            );
+          },
+          child: Scaffold(
+            key: _scaffoldKey,
+            appBar: AppBar(
+              title: Text(data.bookTitle),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.download_for_offline_outlined),
+                  tooltip: 'Modo offline',
+                  onPressed: () => _showOfflineSheet(data),
                 ),
-                const VerticalDivider(width: 1),
               ],
-              Expanded(
-                child: Column(
-                  children: [
-                    if (selected != null)
-                      _StudyFlowStrip(
-                        lesson: selected,
-                        isRead: selectedRead,
-                        isHeard: selectedHeard,
-                        savedWords: vocabularyCount,
-                        curatedWords: curatedVocabularyCount,
-                        onQuizTap: () => _openQuiz(selected),
-                        onFlashcardsTap: () => _openFlashcards(selected),
-                        onVocabularyTap: () => _showVocabularySheet(selected),
-                      ),
-                    Expanded(
-                      child: hasStudyGuide
-                          ? DefaultTabController(
-                              length: 2,
-                              child: Column(
-                                children: [
-                                  Material(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.surface,
-                                    child: const TabBar(
-                                      tabs: [
-                                        Tab(
-                                          icon: Icon(Icons.menu_book_outlined),
-                                          text: 'Libro',
-                                        ),
-                                        Tab(
-                                          icon: Icon(Icons.assignment_outlined),
-                                          text: 'Study guide',
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: TabBarView(
-                                      children: [
-                                        _MainBookReader(
-                                          data: data,
-                                          startPage: _initialPdfPage,
-                                          onPageChanged: _onReadingPageChanged,
-                                        ),
-                                        _StudyGuideReader(data: data),
-                                      ],
-                                    ),
-                                  ),
-                                ],
+              leading: isWide
+                  ? IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: _closeReader,
+                    )
+                  : null,
+            ),
+            drawer: isWide ? null : Drawer(child: SafeArea(child: panel)),
+            body: Column(
+              children: [
+                BookPrefetchBanner(bookSlug: widget.bookSlug),
+                Expanded(
+                  child: Row(
+                    children: [
+                      if (isWide) ...[
+                        SizedBox(
+                          width: _kSidebarWidth,
+                          child: Material(elevation: 1, child: panel),
+                        ),
+                        const VerticalDivider(width: 1),
+                      ],
+                      Expanded(
+                        child: Column(
+                          children: [
+                            if (selected != null)
+                              _StudyFlowStrip(
+                                lesson: selected,
+                                isRead: selectedRead,
+                                isHeard: selectedHeard,
+                                savedWords: vocabularyCount,
+                                curatedWords: curatedVocabularyCount,
+                                onQuizTap: () => _openQuiz(selected),
+                                onFlashcardsTap: () =>
+                                    _openFlashcards(selected),
+                                onVocabularyTap: () =>
+                                    _showVocabularySheet(selected),
                               ),
-                            )
-                          : _MainBookReader(
-                              data: data,
-                              startPage: _initialPdfPage,
-                              onPageChanged: _onReadingPageChanged,
+                            Expanded(
+                              child: hasStudyGuide
+                                  ? DefaultTabController(
+                                      length: 2,
+                                      child: Column(
+                                        children: [
+                                          Material(
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.surface,
+                                            child: const TabBar(
+                                              tabs: [
+                                                Tab(
+                                                  icon: Icon(
+                                                    Icons.menu_book_outlined,
+                                                  ),
+                                                  text: 'Libro',
+                                                ),
+                                                Tab(
+                                                  icon: Icon(
+                                                    Icons.assignment_outlined,
+                                                  ),
+                                                  text: 'Study guide',
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          Expanded(
+                                            child: TabBarView(
+                                              children: [
+                                                _MainBookReader(
+                                                  data: data,
+                                                  startPage: _initialPdfPage,
+                                                  onPageChanged:
+                                                      _onReadingPageChanged,
+                                                ),
+                                                _StudyGuideReader(data: data),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : _MainBookReader(
+                                      data: data,
+                                      startPage: _initialPdfPage,
+                                      onPageChanged: _onReadingPageChanged,
+                                    ),
                             ),
-                    ),
-                    AudioPlayerBar(
-                      audioUrl: selected?.audioUrl,
-                      title: selected == null
-                          ? 'Selecciona una lección'
-                          : selected.lesson.title,
-                      onPositionPersist: _onAudioPositionPersist,
-                      restorePositionSec: progressAsync.maybeWhen(
-                        data: (s) => selected == null
-                            ? null
-                            : s
-                                  .byLessonAudio[selected.lesson.id]
-                                  ?.lastPositionSec,
-                        orElse: () => null,
+                            AudioPlayerBar(
+                              key: _audioBarKey,
+                              audioUrl: selected?.audioUrl,
+                              title: selected == null
+                                  ? 'Selecciona una lección'
+                                  : selected.lesson.title,
+                              onPositionPersist: _onAudioPositionPersist,
+                              restorePositionSec: progressAsync.maybeWhen(
+                                data: (s) => selected == null
+                                    ? null
+                                    : s
+                                          .byLessonAudio[selected.lesson.id]
+                                          ?.lastPositionSec,
+                                orElse: () => null,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -945,20 +953,6 @@ class _StudyFlowStrip extends StatelessWidget {
       ),
     );
   }
-}
-
-class _OfflineAsset {
-  const _OfflineAsset({
-    required this.label,
-    required this.key,
-    required this.url,
-    required this.kind,
-  });
-
-  final String label;
-  final String key;
-  final String url;
-  final String kind;
 }
 
 class _VocabularyEmptyState extends StatelessWidget {

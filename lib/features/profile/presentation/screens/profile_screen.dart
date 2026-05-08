@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../l10n/generated/app_localizations.dart';
+import '../../../auth/domain/entities/app_user.dart';
 import '../../../auth/presentation/controllers/auth_providers.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -17,10 +18,7 @@ class ProfileScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
-          _ProfileHeader(
-            displayName: user?.displayName ?? user?.email ?? '—',
-            email: user?.email ?? '',
-          ),
+          _ProfileHeader(user: user),
           const SizedBox(height: 16),
           Card(
             child: Column(
@@ -35,6 +33,16 @@ class ProfileScreen extends ConsumerWidget {
                   leading: const Icon(Icons.brightness_6_outlined),
                   title: Text(t.profileTheme),
                   trailing: const Text('Auto'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.admin_panel_settings_outlined),
+                  title: const Text('Panel de contenido'),
+                  subtitle: const Text(
+                    'Audita libros, assets, quizzes y vocabulario',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/admin/content'),
                 ),
               ],
             ),
@@ -55,14 +63,20 @@ class ProfileScreen extends ConsumerWidget {
 }
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({required this.displayName, required this.email});
+  const _ProfileHeader({required this.user});
 
-  final String displayName;
-  final String email;
+  final AppUser? user;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final displayName =
+        user?.fullName ?? user?.displayName ?? user?.email ?? '—';
+    final email = user?.email ?? '';
+    final avatarUrl = user?.avatarUrl;
+    final provider = user?.provider;
+    final emailVerified = user?.emailVerified ?? false;
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -80,22 +94,7 @@ class _ProfileHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: colors.primary.withValues(alpha: 0.16),
-              border: Border.all(color: colors.primary.withValues(alpha: 0.5)),
-              boxShadow: [
-                BoxShadow(
-                  color: colors.primary.withValues(alpha: 0.16),
-                  blurRadius: 20,
-                ),
-              ],
-            ),
-            child: Icon(Icons.person, color: colors.primary, size: 32),
-          ),
+          _Avatar(url: avatarUrl, fallbackName: displayName),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -109,14 +108,132 @@ class _ProfileHeader extends StatelessWidget {
                     context,
                   ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  email,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+                if (email.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      if (emailVerified) ...[
+                        const SizedBox(width: 6),
+                        Icon(Icons.verified, size: 14, color: colors.primary),
+                      ],
+                    ],
+                  ),
+                ],
+                if (provider != null && provider.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  _ProviderChip(provider: provider),
+                ],
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Avatar extends StatelessWidget {
+  const _Avatar({required this.url, required this.fallbackName});
+
+  final String? url;
+  final String fallbackName;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final initials = _initials(fallbackName);
+    final decoration = BoxDecoration(
+      shape: BoxShape.circle,
+      color: colors.primary.withValues(alpha: 0.16),
+      border: Border.all(color: colors.primary.withValues(alpha: 0.5)),
+      boxShadow: [
+        BoxShadow(
+          color: colors.primary.withValues(alpha: 0.16),
+          blurRadius: 20,
+        ),
+      ],
+    );
+
+    if (url == null || url!.isEmpty) {
+      return Container(
+        width: 64,
+        height: 64,
+        alignment: Alignment.center,
+        decoration: decoration,
+        child: Text(
+          initials,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            color: colors.primary,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: decoration,
+      clipBehavior: Clip.antiAlias,
+      child: Image.network(
+        url!,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => Icon(Icons.person, color: colors.primary),
+      ),
+    );
+  }
+
+  String _initials(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return '?';
+    final parts = trimmed
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
+        .toUpperCase();
+  }
+}
+
+class _ProviderChip extends StatelessWidget {
+  const _ProviderChip({required this.provider});
+
+  final String provider;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final (icon, label) = switch (provider) {
+      'google' => (Icons.g_mobiledata, 'Google'),
+      _ => (Icons.account_circle_outlined, 'Cuenta'),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(99),
+        color: colors.primary.withValues(alpha: 0.12),
+        border: Border.all(color: colors.primary.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: colors.primary),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: colors.primary,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],

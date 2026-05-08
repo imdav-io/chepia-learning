@@ -18,14 +18,21 @@ class Lesson extends Equatable {
   final int? pdfEndPage;
 
   factory Lesson.fromMap(Map<String, dynamic> m) => Lesson(
-        id: m['id'] as String,
-        bookId: m['book_id'] as String,
-        number: m['number'] as int,
-        title: m['title'] as String,
-        pdfStartPage: m['pdf_start_page'] as int?,
-        pdfEndPage: m['pdf_end_page'] as int?,
-      );
+    id: m['id'] as String,
+    bookId: m['book_id'] as String,
+    number: m['number'] as int,
+    title: m['title'] as String,
+    pdfStartPage: m['pdf_start_page'] as int?,
+    pdfEndPage: m['pdf_end_page'] as int?,
+  );
 
   @override
-  List<Object?> get props => [id, bookId, number, title, pdfStartPage, pdfEndPage];
+  List<Object?> get props => [
+    id,
+    bookId,
+    number,
+    title,
+    pdfStartPage,
+    pdfEndPage,
+  ];
 }

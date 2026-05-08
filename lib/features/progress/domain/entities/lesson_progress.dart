@@ -14,13 +14,13 @@ class ReadingProgress extends Equatable {
   final DateTime? updatedAt;
 
   factory ReadingProgress.fromMap(Map<String, dynamic> m) => ReadingProgress(
-        lessonId: m['lesson_id'] as String,
-        lastPage: (m['last_page'] as num?)?.toInt() ?? 1,
-        isCompleted: (m['is_completed'] as bool?) ?? false,
-        updatedAt: m['updated_at'] != null
-            ? DateTime.tryParse(m['updated_at'] as String)
-            : null,
-      );
+    lessonId: m['lesson_id'] as String,
+    lastPage: (m['last_page'] as num?)?.toInt() ?? 1,
+    isCompleted: (m['is_completed'] as bool?) ?? false,
+    updatedAt: m['updated_at'] != null
+        ? DateTime.tryParse(m['updated_at'] as String)
+        : null,
+  );
 
   @override
   List<Object?> get props => [lessonId, lastPage, isCompleted, updatedAt];
@@ -40,14 +40,19 @@ class AudioProgress extends Equatable {
   final DateTime? updatedAt;
 
   factory AudioProgress.fromMap(Map<String, dynamic> m) => AudioProgress(
-        lessonId: m['lesson_id'] as String,
-        lastPositionSec: (m['last_position_sec'] as num?)?.toInt() ?? 0,
-        isCompleted: (m['is_completed'] as bool?) ?? false,
-        updatedAt: m['updated_at'] != null
-            ? DateTime.tryParse(m['updated_at'] as String)
-            : null,
-      );
+    lessonId: m['lesson_id'] as String,
+    lastPositionSec: (m['last_position_sec'] as num?)?.toInt() ?? 0,
+    isCompleted: (m['is_completed'] as bool?) ?? false,
+    updatedAt: m['updated_at'] != null
+        ? DateTime.tryParse(m['updated_at'] as String)
+        : null,
+  );
 
   @override
-  List<Object?> get props => [lessonId, lastPositionSec, isCompleted, updatedAt];
+  List<Object?> get props => [
+    lessonId,
+    lastPositionSec,
+    isCompleted,
+    updatedAt,
+  ];
 }

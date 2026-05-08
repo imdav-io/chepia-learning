@@ -25,10 +25,10 @@ class AudioPlayerBar extends StatefulWidget {
   final int? restorePositionSec;
 
   @override
-  State<AudioPlayerBar> createState() => _AudioPlayerBarState();
+  State<AudioPlayerBar> createState() => AudioPlayerBarState();
 }
 
-class _AudioPlayerBarState extends State<AudioPlayerBar>
+class AudioPlayerBarState extends State<AudioPlayerBar>
     with RouteAware, WidgetsBindingObserver {
   late final AudioPlayer _player;
   Timer? _persistTimer;
@@ -197,7 +197,7 @@ class _AudioPlayerBarState extends State<AudioPlayerBar>
     }
   }
 
-  Future<void> _pauseAndPersist() async {
+  Future<void> pauseAndPersist() async {
     _persistCurrentPosition();
     try {
       await _player.pause();
@@ -206,18 +206,9 @@ class _AudioPlayerBarState extends State<AudioPlayerBar>
     }
   }
 
-  Future<void> _stopAndDisposePlayer() async {
-    _persistCurrentPosition();
-    try {
-      await _player.stop();
-    } finally {
-      await _player.dispose();
-    }
-  }
-
   @override
   void didPushNext() {
-    unawaited(_pauseAndPersist());
+    unawaited(pauseAndPersist());
   }
 
   @override
@@ -225,7 +216,7 @@ class _AudioPlayerBarState extends State<AudioPlayerBar>
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      unawaited(_pauseAndPersist());
+      unawaited(pauseAndPersist());
     }
   }
 
@@ -236,7 +227,16 @@ class _AudioPlayerBarState extends State<AudioPlayerBar>
     _persistTimer?.cancel();
     _playerStateSub?.cancel();
     _positionSub?.cancel();
-    unawaited(_stopAndDisposePlayer());
+    // Pausa síncrona inmediata: se aplica antes del siguiente frame, evitando
+    // que el audio siga sonando mientras stop+dispose terminan en background.
+    _persistCurrentPosition();
+    unawaited(_player.pause().catchError((Object _) {}));
+    unawaited(
+      _player
+          .stop()
+          .catchError((Object _) {})
+          .whenComplete(() => _player.dispose()),
+    );
     super.dispose();
   }
 

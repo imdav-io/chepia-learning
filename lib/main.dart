@@ -43,9 +43,5 @@ Future<void> main() async {
     }
   }
 
-  runApp(
-    ProviderScope(
-      child: ChepiaApp(supabaseInitError: supabaseInitError),
-    ),
-  );
+  runApp(ProviderScope(child: ChepiaApp(supabaseInitError: supabaseInitError)));
 }

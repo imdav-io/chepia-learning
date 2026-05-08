@@ -1,20 +1,22 @@
-// Genera vocabulario curado por lección usando Claude Vision sobre las
-// imágenes de las páginas de cada lección. Lo persiste en
-// public.lesson_vocabulary y la app lo muestra como flashcards por defecto.
+// Genera flashcards de vocabulario por lección usando OpenAI/ChatGPT Vision
+// sobre las imágenes de las páginas de cada lección. Lo persiste en
+// public.lesson_vocabulary y la app lo muestra como deck principal de
+// flashcards para esa lección.
 //
 // Pipeline previo (igual que generate.mjs):
 //   1) bash scripts/convert-pdf-to-images.sh
 //   2) node upload-content.mjs / register-content.mjs
-//   3) node generate-vocabulary.mjs [--book=<slug>] [--lesson=<n>] [--replace]
+//   3) npm run generate-vocabulary -- [--book=<slug>] [--lesson=<n>] [--replace]
 //
 // Idempotente: si una lección ya tiene vocabulario, la omite. Usa --replace
 // para regenerar y sobrescribir.
 //
 // Uso:
-//   node generate-vocabulary.mjs                                # todas las lecciones
-//   node generate-vocabulary.mjs --book=as-it-is-book-1         # solo un libro
-//   node generate-vocabulary.mjs --book=as-it-is-book-1 --lesson=1
-//   node generate-vocabulary.mjs --book=as-it-is-book-1 --replace
+//   npm run generate-vocabulary                                # todas las lecciones
+//   npm run generate-vocabulary -- --book=as-it-is-book-1      # solo un libro
+//   npm run generate-vocabulary -- --book=as-it-is-book-1 --lesson=1
+//   npm run generate-vocabulary -- --book=as-it-is-book-1 --from-lesson=1 --to-lesson=10
+//   npm run generate-vocabulary -- --book=as-it-is-book-1 --replace
 //
 // Nota: este script requiere que la migración 0004_lesson_vocabulary.sql ya
 // esté aplicada en Supabase (SQL Editor → pegar el archivo → Run).
@@ -23,17 +25,21 @@ import 'dotenv/config';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
-import Anthropic from '@anthropic-ai/sdk';
 
 const {
-  ANTHROPIC_API_KEY,
-  ANTHROPIC_MODEL = 'claude-sonnet-4-5',
+  OPENAI_API_KEY,
+  OPENAI_MODEL = 'gpt-5-mini',
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
 } = process.env;
 
-if (!ANTHROPIC_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('Faltan ANTHROPIC_API_KEY, SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en .env');
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en .env');
+  process.exit(1);
+}
+
+if (!OPENAI_API_KEY) {
+  console.error('Falta OPENAI_API_KEY en .env');
   process.exit(1);
 }
 
@@ -51,10 +57,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-
 const PAGES_DIR = path.resolve('./out/pages');
-const SLEEP_MS = 1500; // throttle conservador para no saturar la API
+const SLEEP_MS = Number.parseInt(process.env.OPENAI_REQUEST_DELAY_MS ?? '1500', 10);
 const INTRO_OFFSET = 10; // primeras N páginas asumidas como portada/índice
 const MAX_ATTEMPTS = Number.parseInt(process.env.GENERATE_MAX_ATTEMPTS ?? '3', 10);
 const MIN_TERMS = 8;
@@ -65,6 +69,32 @@ const BOOKS_META = {
   'as-it-is-book-2': { level: 'intermediate', title: 'As it is — Book 2' },
   'as-it-is-book-3': { level: 'advanced', title: 'As it is — Book 3' },
 };
+
+const META_REFERENCE_PATTERNS = [
+  /\b(?:according to|based on|shown in|seen in|from)\s+(?:the\s+)?(?:page|pages|image|images|picture|pictures|book|text|passage|lesson|unit|exercise|material|source|pdf)\b/i,
+  /\b(?:in|on)\s+(?:the|this|these)\s+(?:page|pages|image|images|picture|pictures|book|text|passage|lesson|unit|exercise|material|source|pdf)\b/i,
+  /\b(?:this|the)\s+(?:page|image|picture|book|text|passage|lesson|unit|exercise|material|source|pdf)\s+(?:shows|says|states|mentions|explains|contains|describes|practices|teaches)\b/i,
+  /\bseg[uú]n\s+(?:la|el|las|los)?\s*(?:p[aá]gina|imagen|libro|texto|lecci[oó]n|unidad|ejercicio|material|fuente|pdf)\b/i,
+  /\b(?:en|de)\s+(?:la|el|las|los)\s+(?:p[aá]gina|imagen|libro|texto|lecci[oó]n|unidad|ejercicio|material|fuente|pdf)\b/i,
+  /\b(?:como se vio|lo que se vio|as we saw|in this lesson|in the unit)\b/i,
+];
+
+function levelPlan(level) {
+  if (level === 'beginner') {
+    return `Book 1 / beginner:
+- Extract very basic, useful vocabulary: objects, animals, food, places, simple actions, common adjectives, and short expressions.
+- If the unit focuses on a basic structure such as this/that, is/are, a/an, plurals, or simple questions, include those forms only when they work as clear flashcards.
+- Keep English examples very short, such as "This is an apple." or "The dog is big."`;
+  }
+  if (level === 'intermediate') {
+    return `Book 2 / intermediate:
+- Include vocabulary, verbs, collocations, prepositions, functional expressions, and short natural phrases.
+- Examples may be slightly fuller sentences, but they must stay clear.`;
+  }
+  return `Book 3 / advanced:
+- Include terms, expressions, collocations, phrasal verbs, connectors, academic verbs, or nuanced vocabulary when present.
+- Examples should teach real usage, not only translate the word.`;
+}
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -118,36 +148,38 @@ async function loadImagesInRange(pages, startPage, endPage) {
 // ---------------------------------------------------------
 // Prompt + generación
 // ---------------------------------------------------------
-const SYSTEM_PROMPT = `Eres un teacher experto de inglés (CEFR A1-C1) para alumnos hispanohablantes. Recibirás imágenes con el material fuente de una unidad. Trátalas solo como insumo: tu trabajo es extraer las palabras y expresiones más importantes para que el estudiante las practique como flashcards.
+const SYSTEM_PROMPT = `You are an expert English teacher (CEFR A1-C1) for Spanish-speaking learners. You will receive images with source material from a unit. Treat those images only as internal input: your job is to extract the most important words and expressions for flashcard practice.
 
-Reglas críticas:
-- Devuelve SIEMPRE JSON válido sin texto adicional.
-- NUNCA menciones páginas, imágenes, escaneos, PDF, libro, texto, pasaje, ni frases meta del tipo "según la página", "in the text", "según el material".
-- El significado debe ser una traducción/definición clara en español, breve, sin meta-frases.
-- El ejemplo en inglés debe usar la palabra/expresión naturalmente, en una oración corta y autosuficiente (sin diálogos genéricos tipo "as we saw before").`;
+Critical rules:
+- Always return valid JSON with no extra text.
+- Never mention pages, images, scans, PDFs, books, texts, passages, or meta phrases such as "according to the page", "in the text", or "based on the material".
+- The meaning must be a short, clear Spanish translation/definition, without meta phrases.
+- The English example must use the word/expression naturally in a short, self-contained sentence, without generic references such as "as we saw before".`;
 
 function userPrompt({ level, lessonNumber }) {
-  return `Contexto interno (no lo cites):
-- Nivel CEFR aproximado: ${level}
-- Unidad/lección: ${lessonNumber}
+  return `Internal context (do not cite it):
+- Approximate CEFR level: ${level}
+- Unit/lesson: ${lessonNumber}
 
-A partir de las imágenes, extrae entre ${MIN_TERMS} y ${MAX_TERMS} entradas de vocabulario CLAVE (las que un estudiante debería dominar al terminar la unidad). Prioriza:
-- Vocabulario nuevo o central de la unidad (sustantivos, verbos, adjetivos, expresiones).
-- Palabras que aparecen varias veces o en ejemplos importantes.
-- Phrasal verbs y colocaciones útiles si los hay.
+From the images, extract between ${MIN_TERMS} and ${MAX_TERMS} KEY vocabulary entries that a learner should master after the unit. Prioritize:
+- New or central vocabulary from the unit: nouns, verbs, adjectives, and expressions.
+- Words that appear several times or in important examples.
+- Useful phrasal verbs and collocations, if present.
 
-Evita:
-- Palabras función obvias (the, of, is, are…) salvo que sean foco de la unidad.
-- Palabras repetidas con misma raíz si ya cubriste una forma.
-- Expresiones que no aporten al objetivo comunicativo de la unidad.
+${levelPlan(level)}
 
-Para cada entrada devuelve:
-- "term": palabra o expresión en inglés, en minúsculas salvo nombres propios.
-- "meaning_es": significado en español, claro y breve (3-12 palabras). Si la palabra tiene varias acepciones, elige la que aplica en la unidad.
-- "example_en": una oración corta en inglés que use la palabra naturalmente. Que tenga sentido por sí sola, no dependa del contexto de la unidad.
-- "pronunciation": pista fonética simple para hispanohablantes (ej. "ka-RI-er" para "career"). Opcional, omite el campo si no aplica.
+Avoid:
+- Obvious function words (the, of, is, are...) unless they are the focus of the unit.
+- Repeated words with the same root if one form is already covered.
+- Expressions that do not support the communicative goal of the unit.
 
-Buenos ejemplos:
+For each entry return:
+- "term": English word or expression, lowercase except proper nouns.
+- "meaning_es": clear, short Spanish meaning (3-12 words). If the word has several meanings, choose the one that fits the unit.
+- "example_en": a short English sentence that uses the word naturally. It must make sense by itself and not depend on the unit context.
+- "pronunciation": simple phonetic hint for Spanish speakers, such as "ka-RI-er" for "career". Optional; omit it when not useful.
+
+Good examples:
 {
   "term": "tired",
   "meaning_es": "cansado",
@@ -160,12 +192,12 @@ Buenos ejemplos:
   "example_en": "She is looking for her keys."
 }
 
-Malos ejemplos (NO hacer):
-- "meaning_es": "esta palabra significa cansado" → demasiado meta.
-- "example_en": "As we saw in the text, this word means tired." → habla del material.
-- "term": "the" → palabra función obvia.
+Bad examples (do not do this):
+- "meaning_es": "esta palabra significa cansado" -> too meta.
+- "example_en": "As we saw in the text, this word means tired." -> refers to the material.
+- "term": "the" -> obvious function word.
 
-Responde SOLO con un JSON con la forma:
+Return ONLY JSON with this shape:
 {
   "vocabulary": [
     { "term": "...", "meaning_es": "...", "example_en": "...", "pronunciation": "..." }
@@ -213,6 +245,13 @@ function validateVocabulary(items) {
     if (entry?.pronunciation !== undefined && typeof entry.pronunciation !== 'string') {
       issues.push(`${label}: pronunciation debe ser string`);
     }
+    for (const key of ['term', 'meaning_es', 'example_en', 'pronunciation']) {
+      const value = entry?.[key];
+      if (typeof value !== 'string') continue;
+      if (META_REFERENCE_PATTERNS.some((pattern) => pattern.test(value))) {
+        issues.push(`${label}.${key}: referencia meta prohibida`);
+      }
+    }
     const key = String(entry?.term ?? '').trim().toLowerCase();
     if (key) {
       if (seen.has(key)) issues.push(`${label}: term duplicado ("${key}")`);
@@ -224,26 +263,37 @@ function validateVocabulary(items) {
   }
 }
 
-async function generateVocabulary({ level, lessonNumber, images }) {
+async function generateVocabularyWithOpenAI({ level, lessonNumber, images }) {
   const content = [
-    { type: 'text', text: userPrompt({ level, lessonNumber }) },
+    { type: 'input_text', text: userPrompt({ level, lessonNumber }) },
     ...images.map((img) => ({
-      type: 'image',
-      source: { type: 'base64', media_type: img.mediaType, data: img.base64 },
+      type: 'input_image',
+      image_url: `data:${img.mediaType};base64,${img.base64}`,
+      detail: 'low',
     })),
   ];
-  const res = await anthropic.messages.create({
-    model: ANTHROPIC_MODEL,
-    max_tokens: 4096,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content }],
+  const body = {
+    model: OPENAI_MODEL,
+    instructions: SYSTEM_PROMPT,
+    input: [{ role: 'user', content }],
+    max_output_tokens: 4096,
+  };
+  const res = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
   });
-  const text = res.content
-    .filter((c) => c.type === 'text')
-    .map((c) => c.text)
-    .join('\n');
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`OpenAI ${res.status}: ${errText.slice(0, 500)}`);
+  }
+  const data = await res.json();
+  const text = extractOpenAIText(data);
   if (!text) {
-    throw new Error('Sin texto en respuesta de Claude: ' + JSON.stringify(res).slice(0, 300));
+    throw new Error('Sin texto en respuesta de OpenAI: ' + JSON.stringify(data).slice(0, 400));
   }
   const parsed = extractJson(text);
   const vocab = Array.isArray(parsed) ? parsed : parsed.vocabulary;
@@ -251,6 +301,26 @@ async function generateVocabulary({ level, lessonNumber, images }) {
     throw new Error('Respuesta sin entradas de vocabulary');
   }
   return vocab;
+}
+
+function extractOpenAIText(data) {
+  if (typeof data.output_text === 'string') return data.output_text;
+  const chunks = [];
+  for (const item of data.output ?? []) {
+    for (const part of item.content ?? []) {
+      if (part.type === 'output_text' && typeof part.text === 'string') {
+        chunks.push(part.text);
+      }
+      if (part.type === 'text' && typeof part.text === 'string') {
+        chunks.push(part.text);
+      }
+    }
+  }
+  return chunks.join('\n').trim();
+}
+
+async function generateVocabulary({ level, lessonNumber, images }) {
+  return generateVocabularyWithOpenAI({ level, lessonNumber, images });
 }
 
 async function generateValidatedVocabulary({ level, lessonNumber, images }) {
@@ -303,7 +373,7 @@ async function persistVocabulary({ lessonId, items }) {
     pronunciation: item.pronunciation ? String(item.pronunciation).trim() : null,
     sort_order: idx,
     generated_by_ai: true,
-    ai_model: ANTHROPIC_MODEL,
+    ai_model: OPENAI_MODEL,
     ai_generated_at: now,
     updated_at: now,
   }));
@@ -317,6 +387,8 @@ async function persistVocabulary({ lessonId, items }) {
 async function main() {
   const filterBookSlug = args.book;
   const filterLessonNumber = args.lesson ? Number.parseInt(args.lesson, 10) : null;
+  const fromLesson = args['from-lesson'] ? Number.parseInt(args['from-lesson'], 10) : null;
+  const toLesson = args['to-lesson'] ? Number.parseInt(args['to-lesson'], 10) : null;
   const replaceExisting = args.replace === true || args.replace === 'true';
 
   if (replaceExisting) {
@@ -343,6 +415,8 @@ async function main() {
       .eq('book_id', book.id)
       .order('number');
     if (filterLessonNumber) lessonsQuery = lessonsQuery.eq('number', filterLessonNumber);
+    if (!filterLessonNumber && fromLesson) lessonsQuery = lessonsQuery.gte('number', fromLesson);
+    if (!filterLessonNumber && toLesson) lessonsQuery = lessonsQuery.lte('number', toLesson);
     const { data: lessons, error: le } = await lessonsQuery;
     if (le) throw le;
 

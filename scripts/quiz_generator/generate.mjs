@@ -1,5 +1,5 @@
-// Genera quizzes con Gemini Vision a partir de las páginas escaneadas de cada
-// libro. Build-time: corre en tu Mac, NO en runtime de la app.
+// Genera quizzes con OpenAI/ChatGPT Vision a partir de las páginas escaneadas
+// de cada libro. Build-time: corre en tu Mac, NO en runtime de la app.
 //
 // Pipeline previo:
 //   1) bash scripts/convert-audio.sh                     (WMA -> MP3 si aplica)
@@ -17,6 +17,7 @@
 //   node generate.mjs --book=as-it-is-book-1   # solo un libro
 //   node generate.mjs --book=as-it-is-book-1 --lesson=1   # 1 sola lección (smoke test)
 //   node generate.mjs --book=as-it-is-book-1 --lesson=1 --replace
+//   node generate.mjs --book=as-it-is-book-1 --from-lesson=1 --to-lesson=10 --replace
 
 import 'dotenv/config';
 import fs from 'node:fs/promises';
@@ -24,14 +25,14 @@ import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 
 const {
-  GEMINI_API_KEY,
-  GEMINI_MODEL = 'gemini-2.5-flash',
+  OPENAI_API_KEY,
+  OPENAI_MODEL = 'gpt-5-mini',
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
 } = process.env;
 
-if (!GEMINI_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('Faltan GEMINI_API_KEY, SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en .env');
+if (!OPENAI_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('Faltan OPENAI_API_KEY, SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en .env');
   process.exit(1);
 }
 
@@ -49,8 +50,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 const PAGES_DIR = path.resolve('./out/pages');
-const RPM = 15; // gemini-2.5-flash free tier
-const SLEEP_MS = Math.ceil(60_000 / RPM); // 4 seg entre requests
+const SLEEP_MS = Number.parseInt(process.env.OPENAI_REQUEST_DELAY_MS ?? '1500', 10);
 const INTRO_OFFSET = 10; // primeras N páginas asumidas como portada/índice
 const MAX_ATTEMPTS = Number.parseInt(process.env.GENERATE_MAX_ATTEMPTS ?? '3', 10);
 
@@ -106,6 +106,35 @@ const EXPLANATION_META_PATTERNS = [
     re: /\bcomo\s+se\s+(?:presenta|muestra|enseña|practica|trabaja|ve)\b/i,
     label: 'explicación habla de cómo aparece el contenido',
   },
+];
+
+const PERSONAL_MEMORY_PATTERNS = [
+  {
+    re: /\bwho\s+is\s+[A-Z][a-z]+\b/,
+    label: 'pregunta de memoria sobre personaje',
+  },
+  {
+    re: /\bwhat\s+does\s+[A-Z][a-z]+\s+(?:do|want|like|have|buy|eat|drink|need|study|say)\b/,
+    label: 'pregunta sobre acciones de un personaje',
+  },
+  {
+    re: /\bwhere\s+does\s+[A-Z][a-z]+\s+(?:live|work|go|study)\b/,
+    label: 'pregunta sobre datos de un personaje',
+  },
+  {
+    re: /\bwhat\s+is\s+[A-Z][a-z]+'s\s+(?:job|occupation|profession|name)\b/,
+    label: 'pregunta sobre oficio/nombre de un personaje',
+  },
+  {
+    re: /\b[a-zA-Z]+,\s+(?:a|an)\s+[a-z]+\s*,\s+(?:works|lives|studies|likes|wants|has)\b/i,
+    label: 'mini-contexto centrado en biografía de personaje',
+  },
+];
+
+const GENERIC_PROMPT_PATTERNS = [
+  /^choose\s+the\s+(?:correct|best|natural)\s+(?:sentence|question|answer|word)\.?$/i,
+  /^complete\s+the\s+sentence\.?$/i,
+  /^choose\s+the\s+right\s+(?:sentence|question|answer|word)\.?$/i,
 ];
 
 const BOOKS_META = {
@@ -164,74 +193,111 @@ async function loadImagesInRange(pages, startPage, endPage) {
 }
 
 // ---------------------------------------------------------
-// Gemini Vision
+// OpenAI Vision
 // ---------------------------------------------------------
-const SYSTEM_PROMPT = `Eres un teacher experto de inglés (CEFR A1-C1) para alumnos hispanohablantes. Recibirás imágenes que contienen el material fuente de una unidad, pero debes tratarlas solo como insumo interno. Primero analiza internamente el objetivo comunicativo, vocabulario útil, diálogos, ejemplos, instrucciones y estructuras gramaticales. Después crea ejercicios naturales para el estudiante, como si hubieras preparado una clase práctica basada en esa unidad.
+const SYSTEM_PROMPT = `You are an expert English teacher (CEFR A1-C1) for Spanish-speaking learners. You will receive images with source material from a unit, but you must treat them only as internal input. First analyze useful vocabulary, examples, exercises, instructions, and grammar structures internally. Then create English knowledge exercises based on those patterns.
 
-Regla crítica: NUNCA menciones páginas, imágenes, escaneos, PDF, libro, texto, pasaje ni frases como "according to the page/text/book" o "según la página/texto/libro". Las preguntas deben evaluar comprensión, uso de vocabulario y control gramatical, no la existencia del material. Si algo no es legible, ignóralo. Devuelve siempre JSON válido sin texto adicional.`;
+Critical rule: NEVER mention pages, images, scans, PDFs, books, texts, passages, or phrases like "according to the page/text/book" or "según la página/texto/libro". Do not ask who a person is, what they do, where they live, what they bought, or what a character did. Questions must assess usable English knowledge: completing sentences, choosing the correct form, choosing the natural question/answer, vocabulary, rules, and usage. If something is not legible, ignore it. Always return valid JSON with no extra text.`;
+
+function levelPlan(level) {
+  if (level === 'beginner') {
+    return `Book 1 / beginner:
+- Use very simple, clear English.
+- Prioritize exercises such as "Complete the sentence", "Choose the correct word", "Choose the correct question", and "Choose the correct answer".
+- Generate at least 6 fill_blank questions with short sentences. Style example: "This ____ an elephant."
+- Use basic vocabulary from the unit and very targeted structures: a/an, this/that, is/are, am/is/are, he/she/it, plurals, basic simple present, simple questions, numbers, colors, objects, places, or basic actions as relevant.
+- Avoid long mini-stories. Use one sentence per prompt whenever possible.
+- Explanations must be very clear, such as: "'Is' se usa con singular y con he/she/it; por eso 'This is...' es correcto."`;
+  }
+  if (level === 'intermediate') {
+    return `Book 2 / intermediate:
+- Increase complexity slightly with more natural phrases, while still testing English knowledge.
+- Combine vocabulary, collocations, prepositions, verb forms, question formation, comparatives, modals, time expressions, and structures found in examples or exercises.
+- Include at least 3 fill_blank questions.
+- You may use short usage contexts, but the answer must depend on vocabulary/grammar, not on remembering character facts.`;
+  }
+  return `Book 3 / advanced:
+- Use higher complexity when the unit supports it: vocabulary nuance, verb tenses, connectors, phrasal verbs, conditionals, passive voice, reported speech, clauses, collocations, or register.
+- Include at least 2 fill_blank questions and natural-usage choice questions.
+- Distractors must be plausible and teach real usage differences.
+- Avoid literal reading questions; assess English mastery.`;
+}
 
 function userPrompt({ level, lessonNumber, feedback }) {
-  return `Contexto interno para calibrar dificultad:
-- Nivel CEFR aproximado: ${level}
-- Unidad/lección: ${lessonNumber}
+  return `Internal context for difficulty calibration:
+- Approximate CEFR level: ${level}
+- Unit/lesson: ${lessonNumber}
 
-Vas a recibir imágenes con el material fuente de esta unidad. Úsalas únicamente para inferir:
-- el tema principal de comunicación;
-- vocabulario y expresiones importantes;
-- estructuras gramaticales practicadas;
-- situaciones, diálogos, ejemplos y ejercicios reutilizables.
+You will receive images with source material from this unit. Use them only to infer:
+- important vocabulary and expressions;
+- practiced grammar structures;
+- reusable examples, exercises, and sentence patterns.
 
-No menciones al estudiante que viste imágenes, páginas, PDF, libro, texto, pasaje o lección. No hagas preguntas visuales ni meta-preguntas. Malos ejemplos:
+${levelPlan(level)}
+
+Do not tell the learner that you saw images, pages, a PDF, a book, a text, a passage, or a lesson. Do not ask visual questions or meta questions. Bad examples:
 - "According to the page, what does ...?"
 - "What is shown in the image?"
 - "In the text, what word means ...?"
 - "Según la página, ¿qué significa ...?"
+- "Who is Sam?"
+- "What does Sam do?"
+- "What is Sam's job?"
+- "Where does Ana live?"
 
-Buenos ejemplos:
-- "Which sentence uses the simple present correctly?"
-- "What does Maria want to buy?"
+Good examples:
+- "Complete the sentence: This ____ an elephant."
+- "Choose the correct question: ____ this your book?"
+- "Which sentence uses 'is' correctly?"
+- "Choose the best answer: Are they students?"
 - "Which word means 'very tired'?"
 - "Complete the sentence: She ____ to school every day."
 
-Genera EXACTAMENTE 15 preguntas mezcladas con esta distribución:
-- 4 multiple_choice de comprehension sobre situaciones, diálogos, instrucciones o mini-contextos de la unidad
-- 4 multiple_choice de vocabulary sobre significado, uso, colocación o sinónimo de palabras/expresiones importantes de la unidad
-- 4 multiple_choice de grammar sobre estructuras practicadas en la unidad, con frases completas y naturales
-- 2 true_false sobre hechos, diálogos, reglas o uso correcto practicado
-- 1 fill_blank usando una oración natural basada en patrones de la unidad
+Generate EXACTLY 15 questions mixed as follows:
+- fill_blank to complete sentences with vocabulary or grammar from the unit.
+- multiple_choice to choose the correct word, correct phrase, correct question, or natural answer.
+- true_false only for rules or correct English usage, never for facts about characters.
 
-Reglas:
-- Cada multiple_choice tiene 4 opciones con UNA sola correcta.
-- Cada true_false tiene 2 opciones ("True"/"False") con UNA correcta.
-- fill_blank deja "____" en el prompt y la respuesta correcta como una de 4 opciones.
-- Las preguntas y opciones DEBEN estar en inglés.
-- La explicación DEBE estar en español, breve (1-2 oraciones), y explicar POR QUÉ la respuesta correcta es correcta.
-- La explicación NO debe decir qué evalúa la pregunta. Prohibido: "esta pregunta evalúa...", "evalúa el uso correcto de...", "sirve para practicar...", "mide la comprensión...".
-- La explicación tampoco debe apoyarse en frases como "según el vocabulario", "como se presenta", "como se vio" o "en la unidad". Explica la regla, significado o dato directamente.
-- Siempre que sea natural, inicia con "La respuesta correcta es..." o menciona la opción correcta y después usa "porque...".
-- Buenas explicaciones:
+Rules:
+- Each multiple_choice question has 4 options with exactly ONE correct option.
+- Each true_false question has 2 options ("True"/"False") with exactly ONE correct option.
+- A fill_blank prompt must include "____" and the correct answer as one of 4 options.
+- Questions and options MUST be in English.
+- Each prompt must be self-contained and unique. Do not use repeated generic prompts like "Choose the correct sentence." without including the sentence, word, or context.
+- Instead of "Choose the correct sentence.", write something specific such as "Choose the correct sentence with 'is'." or "Choose the correct question for a singular object."
+- The explanation MUST be in Spanish, short (1-2 sentences), and explain WHY the correct answer is correct.
+- The explanation must be didactic and concrete. Examples:
+  - "'Is' se usa con singular y con he/she/it; por eso 'This is an elephant' es correcto."
+  - "'Are' se usa con plural o con you/we/they; por eso 'They are students' es correcto."
+  - "'An' va antes de un sonido vocálico; por eso se dice 'an apple'."
+- The explanation must NOT say what the question evaluates. Forbidden: "esta pregunta evalúa...", "evalúa el uso correcto de...", "sirve para practicar...", "mide la comprensión...".
+- The explanation must not rely on phrases such as "según el vocabulario", "como se presenta", "como se vio", or "en la unidad". Explain the rule, meaning, or fact directly.
+- Whenever natural, start with "La respuesta correcta es..." or mention the correct option and then use "porque...".
+- Good explanations:
   - "La respuesta correcta es 'peaches' porque las palabras terminadas en -ch forman el plural con -es."
   - "'Does' se usa con he/she/it en preguntas del present simple; por eso 'Does she...?' es correcto."
   - "'Tired' significa cansado; las otras opciones expresan hambre, frío o tristeza."
-- Si la respuesta correcta es vocabulario, explica el significado o el matiz.
-- Si la respuesta correcta es gramática, explica la regla concreta.
-- Si la respuesta correcta es comprensión, explica el dato o la lógica del diálogo/situación.
-- Cada pregunta debe poder contestarse desde la habilidad practicada en la unidad, no desde memoria visual.
-- Usa distractores plausibles, no absurdos. Evita opciones demasiado obvias.
-- Varía formatos: completar oración, elegir respuesta natural, identificar uso correcto, significado en contexto y comprensión de diálogos.
-- Evita preguntas genéricas que podrían pertenecer a cualquier lección. Deben sentirse conectadas al tema, vocabulario o estructura de esta unidad.
-- Evita mencionar "unit", "lesson", "material", "exercise" o "source" dentro de las preguntas.
-- Prohibido usar estas palabras como referencia al material: page, image, picture, scan, PDF, book, text, passage, "according to", página, imagen, libro, texto, pasaje, "según".
-- Si necesitas evaluar comprensión, pregunta directamente por la situación o diálogo.
-${feedback ? `\nCorrige específicamente estos problemas detectados en un intento anterior:\n${feedback}\n` : ''}
+- If the correct answer is vocabulary, explain the meaning or nuance.
+- If the correct answer is grammar, explain the concrete rule.
+- If you use a mini-context, explain the language logic, not facts from a story.
+- Each question must be answerable from the skill practiced in the unit, not from visual memory.
+- Use plausible distractors, not absurd ones. Avoid options that are too obvious.
+- Vary formats: sentence completion, natural answer selection, correct usage identification, meaning in context, and dialogue comprehension.
+- Avoid generic questions that could belong to any lesson. They should feel connected to this unit's topic, vocabulary, or structure.
+- Forbidden: asking for names, professions, actions, or personal facts about characters. Do not ask "Who is...?", "What does Sam do?", "What is his job?", "Where does she live?", "What does he buy?".
+- Do not use prompts that depend on remembering a story. Use prompts that depend on knowing English.
+- Avoid mentioning "unit", "lesson", "material", "exercise", or "source" inside questions.
+- Forbidden material-reference words: page, image, picture, scan, PDF, book, text, passage, "according to", página, imagen, libro, texto, pasaje, "según".
+- If you need to assess comprehension, ask directly about the situation or dialogue.
+${feedback ? `\nFix these specific issues detected in a previous attempt:\n${feedback}\n` : ''}
 
-Responde SOLO con un JSON con la forma:
+Return ONLY JSON with this shape:
 {
   "questions": [
     {
       "kind": "multiple_choice" | "true_false" | "fill_blank",
       "prompt": "string",
-      "explanation": "string corta en español",
+      "explanation": "short Spanish string",
       "options": [
         { "text": "string", "is_correct": true | false }
       ]
@@ -257,6 +323,22 @@ function extractJson(text) {
   return JSON.parse(match[0]);
 }
 
+function extractOpenAIText(data) {
+  if (typeof data.output_text === 'string') return data.output_text;
+  const chunks = [];
+  for (const item of data.output ?? []) {
+    for (const part of item.content ?? []) {
+      if (part.type === 'output_text' && typeof part.text === 'string') {
+        chunks.push(part.text);
+      }
+      if (part.type === 'text' && typeof part.text === 'string') {
+        chunks.push(part.text);
+      }
+    }
+  }
+  return chunks.join('\n').trim();
+}
+
 function collectMetaReferenceIssues(value, location, issues) {
   if (typeof value !== 'string') return;
   for (const pattern of META_REFERENCE_PATTERNS) {
@@ -277,7 +359,40 @@ function collectExplanationQualityIssues(value, location, issues) {
   }
 }
 
-function validateQuestions(questions) {
+function collectPersonalMemoryIssues(value, location, issues) {
+  if (typeof value !== 'string') return;
+  for (const pattern of PERSONAL_MEMORY_PATTERNS) {
+    if (pattern.re.test(value)) {
+      issues.push(`${location}: ${pattern.label} -> "${value.slice(0, 120)}"`);
+      break;
+    }
+  }
+}
+
+function collectGenericPromptIssues(question, location, issues) {
+  const prompt = String(question?.prompt ?? '').trim();
+  for (const pattern of GENERIC_PROMPT_PATTERNS) {
+    if (pattern.test(prompt)) {
+      issues.push(`${location}: prompt genérico, debe incluir oración/contexto -> "${prompt}"`);
+      return;
+    }
+  }
+}
+
+function validateLevelShape(questions, level, issues) {
+  const fillBlankCount = questions.filter((question) => question.kind === 'fill_blank').length;
+  if (level === 'beginner' && fillBlankCount < 6) {
+    issues.push(`beginner: se esperaban al menos 6 fill_blank y llegaron ${fillBlankCount}`);
+  }
+  if (level === 'intermediate' && fillBlankCount < 3) {
+    issues.push(`intermediate: se esperaban al menos 3 fill_blank y llegaron ${fillBlankCount}`);
+  }
+  if (level === 'advanced' && fillBlankCount < 2) {
+    issues.push(`advanced: se esperaban al menos 2 fill_blank y llegaron ${fillBlankCount}`);
+  }
+}
+
+function validateQuestions(questions, level) {
   const issues = [];
   if (!Array.isArray(questions)) {
     throw new Error('La respuesta no contiene un arreglo de preguntas');
@@ -285,6 +400,7 @@ function validateQuestions(questions) {
   if (questions.length !== 15) {
     issues.push(`se esperaban 15 preguntas y llegaron ${questions.length}`);
   }
+  validateLevelShape(questions, level, issues);
 
   const seenPrompts = new Set();
   for (const [i, question] of questions.entries()) {
@@ -301,6 +417,13 @@ function validateQuestions(questions) {
     collectMetaReferenceIssues(question.prompt, `${qLabel}.prompt`, issues);
     collectMetaReferenceIssues(question.explanation, `${qLabel}.explanation`, issues);
     collectExplanationQualityIssues(question.explanation, `${qLabel}.explanation`, issues);
+    collectPersonalMemoryIssues(question.prompt, `${qLabel}.prompt`, issues);
+    collectPersonalMemoryIssues(question.explanation, `${qLabel}.explanation`, issues);
+    collectGenericPromptIssues(question, `${qLabel}.prompt`, issues);
+
+    if (question.kind === 'fill_blank' && !String(question.prompt ?? '').includes('____')) {
+      issues.push(`${qLabel}: fill_blank debe incluir "____" en el prompt`);
+    }
 
     const promptKey = String(question.prompt ?? '').trim().toLowerCase();
     if (promptKey) {
@@ -324,6 +447,7 @@ function validateQuestions(questions) {
         issues.push(`${qLabel}.option${optionIndex + 1}: texto ausente`);
       }
       collectMetaReferenceIssues(option?.text, `${qLabel}.option${optionIndex + 1}`, issues);
+      collectPersonalMemoryIssues(option?.text, `${qLabel}.option${optionIndex + 1}`, issues);
     }
   }
 
@@ -333,40 +457,41 @@ function validateQuestions(questions) {
 }
 
 async function generateQuestionsVision({ level, lessonNumber, images, feedback }) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-  const parts = [
-    { text: userPrompt({ level, lessonNumber, feedback }) },
-    ...images.map((img) => ({ inline_data: { mime_type: img.mime, data: img.base64 } })),
+  const content = [
+    { type: 'input_text', text: userPrompt({ level, lessonNumber, feedback }) },
+    ...images.map((img) => ({
+      type: 'input_image',
+      image_url: `data:${img.mime};base64,${img.base64}`,
+      detail: 'low',
+    })),
   ];
   const body = {
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents: [{ role: 'user', parts }],
-    generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 8192,
-      responseMimeType: 'application/json',
-    },
+    model: OPENAI_MODEL,
+    instructions: SYSTEM_PROMPT,
+    input: [{ role: 'user', content }],
+    max_output_tokens: 8192,
   };
-  const res = await fetch(url, {
+  const res = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Gemini ${res.status}: ${errText.slice(0, 400)}`);
+    throw new Error(`OpenAI ${res.status}: ${errText.slice(0, 500)}`);
   }
   const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  const finishReason = data?.candidates?.[0]?.finishReason;
+  const text = extractOpenAIText(data);
   if (!text) throw new Error('Sin texto en respuesta: ' + JSON.stringify(data).slice(0, 300));
   let parsed;
   try {
     parsed = extractJson(text);
   } catch (e) {
-    // Diagnóstico útil: muchos JSON parse fail por trunco (MAX_TOKENS).
     const snippet = text.slice(-200);
-    throw new Error(`JSON parse falló (finishReason=${finishReason}). Final: "...${snippet}"`);
+    throw new Error(`JSON parse falló. Final: "...${snippet}"`);
   }
   if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) {
     throw new Error('Sin preguntas en respuesta');
@@ -385,7 +510,7 @@ async function generateValidatedQuestionsVision({ level, lessonNumber, images })
       feedback,
     });
     try {
-      validateQuestions(questions);
+      validateQuestions(questions, level);
       return questions;
     } catch (e) {
       lastError = e;
@@ -460,7 +585,7 @@ async function persistQuiz({ lessonId, questions }) {
       lesson_id: lessonId,
       kind: 'lesson',
       generated_by_ai: true,
-      ai_model: GEMINI_MODEL,
+      ai_model: OPENAI_MODEL,
       ai_generated_at: new Date().toISOString(),
     })
     .select('id')
@@ -509,6 +634,8 @@ async function maybeBackfillRange(lessonId, start, end) {
 async function main() {
   const filterBookSlug = args.book;
   const filterLessonNumber = args.lesson ? parseInt(args.lesson, 10) : null;
+  const fromLesson = args['from-lesson'] ? parseInt(args['from-lesson'], 10) : null;
+  const toLesson = args['to-lesson'] ? parseInt(args['to-lesson'], 10) : null;
   const replaceExisting = args.replace === true || args.replace === 'true';
 
   if (replaceExisting) {
@@ -535,6 +662,8 @@ async function main() {
       .eq('book_id', book.id)
       .order('number');
     if (filterLessonNumber) lessonsQuery = lessonsQuery.eq('number', filterLessonNumber);
+    if (!filterLessonNumber && fromLesson) lessonsQuery = lessonsQuery.gte('number', fromLesson);
+    if (!filterLessonNumber && toLesson) lessonsQuery = lessonsQuery.lte('number', toLesson);
     const { data: lessons, error: le } = await lessonsQuery;
     if (le) throw le;
 

@@ -70,7 +70,10 @@ class _LessonAudioPlayerState extends State<LessonAudioPlayer> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text('No se pudo cargar el audio: $_error', textAlign: TextAlign.center),
+          child: Text(
+            'No se pudo cargar el audio: $_error',
+            textAlign: TextAlign.center,
+          ),
         ),
       );
     }
@@ -95,17 +98,18 @@ class _LessonAudioPlayerState extends State<LessonAudioPlayer> {
                     children: [
                       Slider(
                         value: clamped.inMilliseconds.toDouble(),
-                        max: duration.inMilliseconds.toDouble().clamp(1, double.infinity),
-                        onChanged: (v) => _player.seek(Duration(milliseconds: v.toInt())),
+                        max: duration.inMilliseconds.toDouble().clamp(
+                          1,
+                          double.infinity,
+                        ),
+                        onChanged: (v) =>
+                            _player.seek(Duration(milliseconds: v.toInt())),
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(_fmt(clamped)),
-                            Text(_fmt(duration)),
-                          ],
+                          children: [Text(_fmt(clamped)), Text(_fmt(duration))],
                         ),
                       ),
                     ],
@@ -121,7 +125,9 @@ class _LessonAudioPlayerState extends State<LessonAudioPlayer> {
               IconButton(
                 icon: const Icon(Icons.replay_10),
                 iconSize: 36,
-                onPressed: () => _player.seek(_player.position - const Duration(seconds: 10)),
+                onPressed: () => _player.seek(
+                  _player.position - const Duration(seconds: 10),
+                ),
               ),
               const SizedBox(width: 16),
               StreamBuilder<PlayerState>(
@@ -157,7 +163,9 @@ class _LessonAudioPlayerState extends State<LessonAudioPlayer> {
               IconButton(
                 icon: const Icon(Icons.forward_10),
                 iconSize: 36,
-                onPressed: () => _player.seek(_player.position + const Duration(seconds: 10)),
+                onPressed: () => _player.seek(
+                  _player.position + const Duration(seconds: 10),
+                ),
               ),
             ],
           ),

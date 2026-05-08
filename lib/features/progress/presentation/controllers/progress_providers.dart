@@ -180,8 +180,7 @@ final progressOverviewProvider = FutureProvider<List<BookProgressOverview>>((
     ),
     safeFetch(
       'quizzes',
-      () =>
-          client.from('quizzes').select('id, lesson_id').eq('kind', 'lesson'),
+      () => client.from('quizzes').select('id, lesson_id').eq('kind', 'lesson'),
     ),
     safeFetch(
       'quiz_attempts',

@@ -9,6 +9,7 @@ import '../../domain/entities/book.dart';
 import '../../domain/entities/lesson.dart';
 import '../../domain/entities/level.dart';
 import '../../domain/repositories/catalog_repository.dart';
+import '../../../../shared/services/cache_providers.dart';
 
 final catalogRepositoryProvider = Provider<CatalogRepository>((ref) {
   return SupabaseCatalogRepository(ref.watch(supabaseClientProvider));
@@ -42,10 +43,7 @@ final lessonsProvider = FutureProvider.family<List<Lesson>, String>((
   return ref.watch(catalogRepositoryProvider).fetchLessons(bookId);
 });
 
-Future<Asset?> _tryFetchAsset(
-  Future<Asset?> Function() fetch,
-  String label,
-) async {
+Future<T?> _tryFetchAsset<T>(Future<T?> Function() fetch, String label) async {
   try {
     return await fetch();
   } on Object catch (e, st) {
@@ -190,6 +188,34 @@ class BookReaderData {
   final List<LessonWithAudio> lessons;
 }
 
+class BookOfflineAsset {
+  const BookOfflineAsset({
+    required this.label,
+    required this.key,
+    required this.url,
+    required this.kind,
+  });
+
+  final String label;
+  final String key;
+  final String url;
+  final String kind;
+}
+
+class BookOfflineStatus {
+  const BookOfflineStatus({
+    required this.totalAssets,
+    required this.cachedAssets,
+  });
+
+  final int totalAssets;
+  final int cachedAssets;
+
+  bool get isFullyCached => totalAssets > 0 && cachedAssets == totalAssets;
+  bool get hasAnyCached => cachedAssets > 0;
+  double get ratio => totalAssets == 0 ? 0 : cachedAssets / totalAssets;
+}
+
 /// Provee todo lo necesario para el BookReaderScreen en un solo fetch:
 /// libro, PDF (URL resuelta) y todas las lecciones con sus audios resueltos.
 final bookReaderDataProvider = FutureProvider.family<BookReaderData, String>((
@@ -264,19 +290,21 @@ final bookReaderDataProvider = FutureProvider.family<BookReaderData, String>((
 
   final lessons = [...await catalog.fetchLessons(bookId)]
     ..sort((a, b) => a.number.compareTo(b.number));
-  final lessonsWithAudio = <LessonWithAudio>[];
-  for (final l in lessons) {
-    final a = await _tryFetchAsset(
-      () => catalog.fetchLessonAudio(l.id),
-      'Audio de lección ${l.number}',
-    );
-    final url = await _tryResolveUrl(
-      assetRepo,
-      a,
-      'Audio de lección ${l.number}',
-    );
-    lessonsWithAudio.add(LessonWithAudio(lesson: l, audio: a, audioUrl: url));
-  }
+  final lessonAudios = await _tryFetchAsset(
+    () => catalog.fetchLessonAudios(lessons.map((l) => l.id).toList()),
+    'Audios de lecciones',
+  );
+  final lessonsWithAudio = await Future.wait(
+    lessons.map((l) async {
+      final a = lessonAudios?[l.id];
+      final url = await _tryResolveUrl(
+        assetRepo,
+        a,
+        'Audio de lección ${l.number}',
+      );
+      return LessonWithAudio(lesson: l, audio: a, audioUrl: url);
+    }),
+  );
 
   return BookReaderData(
     bookId: bookId,
@@ -316,4 +344,83 @@ final lazyBookPdfProvider =
       );
       if (url == null) return null;
       return (key: pdf.storagePath, url: url);
+    });
+
+Future<List<BookOfflineAsset>> buildBookOfflineAssets({
+  required BookReaderData data,
+  required Future<({String? key, String? url})?> Function(String bookId)
+  loadLazyPdf,
+}) async {
+  final assets = <BookOfflineAsset>[];
+
+  String? pdfKey = data.pdfKey;
+  String? pdfUrl = data.pdfUrl;
+  if (data.isOptimized && (pdfKey == null || pdfUrl == null)) {
+    final lazy = await loadLazyPdf(data.bookId);
+    pdfKey = lazy?.key;
+    pdfUrl = lazy?.url;
+  }
+  if (pdfKey != null && pdfUrl != null) {
+    assets.add(
+      BookOfflineAsset(
+        label: 'PDF principal',
+        key: pdfKey,
+        url: pdfUrl,
+        kind: 'pdf',
+      ),
+    );
+  }
+  if (data.studyGuideUrl != null && data.studyGuideKey != null) {
+    assets.add(
+      BookOfflineAsset(
+        label: 'Study guide',
+        key: data.studyGuideKey!,
+        url: data.studyGuideUrl!,
+        kind: 'pdf',
+      ),
+    );
+  }
+  for (final lesson in data.lessons) {
+    final audio = lesson.audio;
+    if (audio == null || lesson.audioUrl == null) continue;
+    assets.add(
+      BookOfflineAsset(
+        label: 'Audio L${lesson.lesson.number}',
+        key: audio.storagePath,
+        url: lesson.audioUrl!,
+        kind: 'audio',
+      ),
+    );
+  }
+  return assets;
+}
+
+final bookOfflineAssetsProvider =
+    FutureProvider.family<List<BookOfflineAsset>, String>((
+      ref,
+      bookSlug,
+    ) async {
+      final data = await ref.watch(bookReaderDataProvider(bookSlug).future);
+      return buildBookOfflineAssets(
+        data: data,
+        loadLazyPdf: (bookId) => ref.read(lazyBookPdfProvider(bookId).future),
+      );
+    });
+
+final bookOfflineStatusProvider =
+    FutureProvider.family<BookOfflineStatus, String>((ref, bookSlug) async {
+      final assets = await ref.watch(
+        bookOfflineAssetsProvider(bookSlug).future,
+      );
+      final cache = ref.watch(assetCacheProvider);
+      var cached = 0;
+      for (final asset in assets) {
+        if (await cache.exists(asset.key, kind: asset.kind)) {
+          cached++;
+        }
+      }
+      return BookOfflineStatus(
+        totalAssets: assets.length,
+        cachedAssets: cached,
+      );
     });

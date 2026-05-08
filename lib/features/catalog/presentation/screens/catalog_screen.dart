@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../l10n/generated/app_localizations.dart';
+import '../../../../shared/widgets/app_state_views.dart';
 import '../../../lesson/presentation/widgets/content_loading_view.dart';
 import '../controllers/catalog_providers.dart';
 
@@ -21,14 +22,19 @@ class CatalogScreen extends ConsumerWidget {
         child: levelsAsync.when(
           loading: () =>
               const ContentLoadingView(status: 'Cargando niveles...'),
-          error: (e, _) => _ErrorView(
-            message: e.toString(),
+          error: (e, _) => AppErrorView(
+            title: 'No pudimos cargar la biblioteca',
+            message:
+                'Revisa tu conexión o la configuración de Supabase. Detalle: $e',
             onRetry: () => ref.invalidate(levelsProvider),
           ),
           data: (levels) {
             if (levels.isEmpty) {
-              return const _EmptyView(
-                message: 'Aún no hay niveles disponibles.',
+              return const AppEmptyView(
+                title: 'Aún no hay niveles',
+                message:
+                    'Carga niveles, libros y assets para que la biblioteca aparezca.',
+                icon: Icons.school_outlined,
               );
             }
             return ListView.separated(
@@ -42,7 +48,7 @@ class CatalogScreen extends ConsumerWidget {
                   code: level.code,
                   number: level.sortOrder,
                   accent: _colorForCode(level.code),
-                  onTap: () => context.push('/levels/${level.code}'),
+                  onTap: () => context.push('/catalog/levels/${level.code}'),
                 );
               },
             );
@@ -169,46 +175,6 @@ class _LevelCard extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, required this.onRetry});
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 48),
-            const SizedBox(height: 16),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: onRetry, child: const Text('Reintentar')),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyView extends StatelessWidget {
-  const _EmptyView({required this.message});
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(message, textAlign: TextAlign.center),
       ),
     );
   }

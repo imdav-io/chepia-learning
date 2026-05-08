@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../lesson/presentation/widgets/content_loading_view.dart';
+import '../../../../shared/widgets/app_state_views.dart';
 import '../../domain/entities/quiz.dart';
 import '../controllers/quiz_providers.dart';
 
@@ -25,22 +26,24 @@ class QuizScreen extends ConsumerWidget {
       appBar: AppBar(title: Text('Quiz · Lesson $lessonNumber')),
       body: quizAsync.when(
         loading: () => const ContentLoadingView(status: 'Preparando quiz...'),
-        error: (e, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(e.toString(), textAlign: TextAlign.center),
+        error: (e, _) => AppErrorView(
+          title: 'No se pudo cargar el quiz',
+          message:
+              'Revisa conexión, permisos de Supabase o que la lección exista. Detalle: $e',
+          onRetry: () => ref.invalidate(
+            lessonQuizProvider((
+              bookSlug: bookSlug,
+              lessonNumber: lessonNumber,
+            )),
           ),
         ),
         data: (quiz) {
           if (quiz == null || quiz.questions.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'Esta lección aún no tiene quiz generado.\n\nGenera los quizzes desde scripts/quiz_generator/generate.mjs',
-                  textAlign: TextAlign.center,
-                ),
-              ),
+            return const AppEmptyView(
+              title: 'Sin quiz todavía',
+              message:
+                  'Genera quizzes desde scripts/quiz_generator/generate.mjs o revisa el panel de contenido.',
+              icon: Icons.quiz_outlined,
             );
           }
           return _QuizRunner(quiz: quiz);

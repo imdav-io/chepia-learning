@@ -16,12 +16,30 @@ class SupabaseAuthRepository implements AuthRepository {
 
   AppUser? _mapUser(User? user) {
     if (user == null) return null;
+    final meta = user.userMetadata ?? const <String, dynamic>{};
+    final appMeta = user.appMetadata;
+    final fullName =
+        (meta['full_name'] as String?) ?? (meta['name'] as String?);
+    final avatar =
+        (meta['avatar_url'] as String?) ?? (meta['picture'] as String?);
+    final provider = appMeta['provider'] as String?;
+    final emailVerifiedRaw = meta['email_verified'];
+    final emailVerified = emailVerifiedRaw is bool
+        ? emailVerifiedRaw
+        : emailVerifiedRaw is String
+        ? emailVerifiedRaw.toLowerCase() == 'true'
+        : false;
     return AppUser(
       id: user.id,
       email: user.email ?? '',
-      displayName:
-          user.userMetadata?['full_name'] as String? ??
-          user.userMetadata?['name'] as String?,
+      displayName: fullName ?? user.email,
+      fullName: fullName,
+      givenName: meta['given_name'] as String?,
+      familyName: meta['family_name'] as String?,
+      avatarUrl: avatar,
+      provider: provider,
+      locale: meta['locale'] as String?,
+      emailVerified: emailVerified,
     );
   }
 
@@ -33,47 +51,6 @@ class SupabaseAuthRepository implements AuthRepository {
     return _client.auth.onAuthStateChange.map(
       (event) => _mapUser(event.session?.user),
     );
-  }
-
-  @override
-  Future<AppUser> signInWithEmail({
-    required String email,
-    required String password,
-  }) async {
-    try {
-      final res = await _client.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
-      final mapped = _mapUser(res.user);
-      if (mapped == null) throw const AuthFailure('No se pudo iniciar sesión');
-      return mapped;
-    } on AuthException catch (e, st) {
-      AppLogger.warn('signInWithEmail failed', e, st);
-      throw AuthFailure(e.message, cause: e);
-    } catch (e, st) {
-      AppLogger.error('signInWithEmail unknown', e, st);
-      throw UnknownFailure('No se pudo iniciar sesión', e);
-    }
-  }
-
-  @override
-  Future<AppUser> signUpWithEmail({
-    required String email,
-    required String password,
-  }) async {
-    try {
-      final res = await _client.auth.signUp(email: email, password: password);
-      final mapped = _mapUser(res.user);
-      if (mapped == null) throw const AuthFailure('No se pudo crear la cuenta');
-      return mapped;
-    } on AuthException catch (e, st) {
-      AppLogger.warn('signUpWithEmail failed', e, st);
-      throw AuthFailure(e.message, cause: e);
-    } catch (e, st) {
-      AppLogger.error('signUpWithEmail unknown', e, st);
-      throw UnknownFailure('No se pudo crear la cuenta', e);
-    }
   }
 
   @override
@@ -96,31 +73,7 @@ class SupabaseAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> signInWithApple() async {
-    try {
-      await _client.auth.signInWithOAuth(
-        OAuthProvider.apple,
-        redirectTo: _oauthRedirect,
-        authScreenLaunchMode: kIsWeb
-            ? LaunchMode.platformDefault
-            : LaunchMode.externalApplication,
-      );
-    } on AuthException catch (e, st) {
-      AppLogger.warn('signInWithApple failed', e, st);
-      throw AuthFailure(e.message, cause: e);
-    } catch (e, st) {
-      AppLogger.error('signInWithApple unknown', e, st);
-      throw UnknownFailure('No se pudo iniciar sesión con Apple', e);
-    }
-  }
-
-  @override
   Future<void> signOut() async {
     await _client.auth.signOut();
-  }
-
-  @override
-  Future<void> sendPasswordReset(String email) async {
-    await _client.auth.resetPasswordForEmail(email);
   }
 }

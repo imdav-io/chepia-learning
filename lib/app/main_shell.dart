@@ -41,10 +41,20 @@ class MainShell extends StatelessWidget {
           selectedIndex: navigationShell.currentIndex,
           onDestinationSelected: (i) => _goBranchAfterMouseTracking(context, i),
           destinations: [
+            const NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home),
+              label: 'Inicio',
+            ),
             NavigationDestination(
-              icon: const Icon(Icons.school_outlined),
-              selectedIcon: const Icon(Icons.school),
-              label: t.tabLearn,
+              icon: const Icon(Icons.library_books_outlined),
+              selectedIcon: const Icon(Icons.library_books),
+              label: 'Biblioteca',
+            ),
+            const NavigationDestination(
+              icon: Icon(Icons.record_voice_over_outlined),
+              selectedIcon: Icon(Icons.record_voice_over),
+              label: 'Situaciones',
             ),
             NavigationDestination(
               icon: const Icon(Icons.insights_outlined),
