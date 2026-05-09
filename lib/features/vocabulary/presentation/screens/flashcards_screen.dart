@@ -86,7 +86,16 @@ class FlashcardsScreen extends ConsumerWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: Text('Flashcards · Lesson $lessonNumber')),
+      appBar: AppBar(
+        title: Text('Flashcards · Lesson $lessonNumber'),
+        actions: [
+          IconButton(
+            tooltip: 'Hablar con Chepia',
+            onPressed: () => context.push('/companion'),
+            icon: const Icon(Icons.chat_bubble_outline_rounded),
+          ),
+        ],
+      ),
       body: lessonAsync.when(
         loading: () =>
             const ContentLoadingView(status: 'Barajando flashcards...'),

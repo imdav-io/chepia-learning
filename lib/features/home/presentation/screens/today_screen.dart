@@ -18,11 +18,6 @@ class TodayScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Hoy')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/companion'),
-        icon: const Icon(Icons.chat_bubble_outline_rounded),
-        label: const Text('Hablar con Chepia'),
-      ),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(progressOverviewProvider);

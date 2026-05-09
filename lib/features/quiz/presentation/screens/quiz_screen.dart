@@ -23,7 +23,16 @@ class QuizScreen extends ConsumerWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: Text('Quiz · Lesson $lessonNumber')),
+      appBar: AppBar(
+        title: Text('Quiz · Lesson $lessonNumber'),
+        actions: [
+          IconButton(
+            tooltip: 'Hablar con Chepia',
+            onPressed: () => context.push('/companion'),
+            icon: const Icon(Icons.chat_bubble_outline_rounded),
+          ),
+        ],
+      ),
       body: quizAsync.when(
         loading: () => const ContentLoadingView(status: 'Preparando quiz...'),
         error: (e, _) => AppErrorView(

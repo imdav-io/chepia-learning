@@ -18,6 +18,33 @@ class CompanionContext {
     if (lesson != null) 'lessonContext': lesson,
     if (vocab != null && vocab!.isNotEmpty) 'vocabularyFocus': vocab,
   };
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is CompanionContext &&
+        other.level == level &&
+        other.ageGroup == ageGroup &&
+        other.lesson == lesson &&
+        _sameStringList(other.vocab, vocab);
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    level,
+    ageGroup,
+    lesson,
+    Object.hashAll(vocab ?? const <String>[]),
+  );
+}
+
+bool _sameStringList(List<String>? a, List<String>? b) {
+  if (a == null || b == null) return a == b;
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i += 1) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }
 
 class CompanionRepository {

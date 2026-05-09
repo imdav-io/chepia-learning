@@ -632,6 +632,11 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
               title: Text(data.bookTitle),
               actions: [
                 IconButton(
+                  icon: const Icon(Icons.chat_bubble_outline_rounded),
+                  tooltip: 'Hablar con Chepia',
+                  onPressed: () => context.push('/companion'),
+                ),
+                IconButton(
                   icon: const Icon(Icons.download_for_offline_outlined),
                   tooltip: 'Modo offline',
                   onPressed: () => _showOfflineSheet(data),

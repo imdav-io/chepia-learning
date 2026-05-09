@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../shared/widgets/app_state_views.dart';
 import '../../../lesson/presentation/widgets/content_loading_view.dart';
@@ -91,6 +92,13 @@ class _SituationDetailState extends State<_SituationDetail> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(bundle.situation.titleEs),
+          actions: [
+            IconButton(
+              tooltip: 'Hablar con Chepia',
+              onPressed: () => context.push('/companion'),
+              icon: const Icon(Icons.chat_bubble_outline_rounded),
+            ),
+          ],
           bottom: const TabBar(
             tabs: [
               Tab(icon: Icon(Icons.style_outlined), text: 'Estudiar'),

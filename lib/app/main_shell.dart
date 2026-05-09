@@ -25,6 +25,12 @@ class MainShell extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return Scaffold(
       body: navigationShell,
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'main-shell-chepia-fab',
+        onPressed: () => context.push('/companion'),
+        icon: const Icon(Icons.chat_bubble_outline_rounded),
+        label: const Text('Chepia'),
+      ),
       bottomNavigationBar: DecoratedBox(
         decoration: BoxDecoration(
           color: colors.surface,
